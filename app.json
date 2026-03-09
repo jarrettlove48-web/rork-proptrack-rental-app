@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "PropTrack Rental App",
+    "name": "PropTrack",
     "slug": "proptrack-rental-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,14 +15,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.rork.proptrack-rental-app"
+      "bundleIdentifier": "com.proptrack.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.proptrack_rental_app"
+      "package": "com.proptrack.app"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
