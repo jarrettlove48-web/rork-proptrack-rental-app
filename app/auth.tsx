@@ -12,7 +12,8 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Building2, Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { Building2, Mail, Lock, User, Eye, EyeOff, ArrowRight, KeyRound } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -22,6 +23,7 @@ type AuthMode = 'login' | 'signup' | 'forgot';
 export default function AuthScreen() {
   const { signIn, signUp, resetPassword, isSigningIn, isSigningUp } = useAuth();
   const { colors } = useTheme();
+  const router = useRouter();
 
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -71,7 +73,7 @@ export default function AuthScreen() {
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (mode === 'login') {
       const success = await signIn(email.trim(), password);
@@ -232,6 +234,15 @@ export default function AuthScreen() {
                   </TouchableOpacity>
                 )}
               </View>
+
+              <TouchableOpacity
+                style={[styles.tenantLink, { borderColor: colors.border }]}
+                onPress={() => router.push('/tenant-auth' as never)}
+                activeOpacity={0.7}
+              >
+                <KeyRound size={14} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+                <Text style={styles.tenantLinkText}>I'm a tenant with an invite code</Text>
+              </TouchableOpacity>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -353,5 +364,21 @@ const styles = StyleSheet.create({
   },
   switchText: {
     fontSize: 14,
+  },
+  tenantLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  tenantLinkText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: 'rgba(255,255,255,0.7)',
   },
 });

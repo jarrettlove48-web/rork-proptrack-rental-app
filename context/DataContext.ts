@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -68,7 +68,7 @@ function mapExpense(row: Record<string, unknown>): Expense {
     propertyId: row.property_id as string,
     unitId: row.unit_id as string | undefined,
     description: (row.description as string) ?? '',
-    amount: Number(row.amount) ?? 0,
+    amount: Number(row.amount) || 0,
     category: row.category as Expense['category'],
     date: (row.date as string) ?? '',
     vendor: row.vendor as string | undefined,
@@ -279,6 +279,47 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (activitiesQuery.data) setActivities(activitiesQuery.data);
   }, [activitiesQuery.data]);
 
+  useEffect(() => {
+    if (!userId) return;
+    console.log('[Data] Setting up realtime subscription for messages...');
+    const channel = supabase
+      .channel('landlord-messages-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const newMsg = mapMessage(payload.new as Record<string, unknown>);
+          console.log('[Data] Realtime new message:', newMsg.id);
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'maintenance_requests',
+        },
+        () => {
+          console.log('[Data] Realtime new request detected, refetching...');
+          void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[Data] Cleaning up realtime subscription');
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
+
   const addActivityRecord = useCallback(async (item: Omit<ActivityItem, 'id' | 'timestamp'>) => {
     if (!userId) return;
     const { error } = await supabase.from('activities').insert({
@@ -289,7 +330,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       related_id: item.relatedId ?? null,
     });
     if (error) console.log('[Data] Add activity error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['activities', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['activities', userId] });
   }, [userId, queryClient]);
 
   const addProperty = useCallback(async (data: Omit<Property, 'id' | 'createdAt'>) => {
@@ -310,8 +351,8 @@ export const [DataProvider, useData] = createContextHook(() => {
       return null;
     }
     const newProperty = mapProperty(inserted);
-    queryClient.invalidateQueries({ queryKey: ['properties', userId] });
-    addActivityRecord({ type: 'property_added', title: 'Property added', subtitle: newProperty.name, relatedId: newProperty.id });
+    void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
+    void addActivityRecord({ type: 'property_added', title: 'Property added', subtitle: newProperty.name, relatedId: newProperty.id });
     return newProperty;
   }, [userId, queryClient, addActivityRecord]);
 
@@ -324,7 +365,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (data.unitCount !== undefined) updateData.unit_count = data.unitCount;
     const { error } = await supabase.from('properties').update(updateData).eq('id', id);
     if (error) console.log('[Data] Update property error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['properties', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
   }, [userId, queryClient]);
 
   const deleteProperty = useCallback(async (id: string) => {
@@ -332,10 +373,10 @@ export const [DataProvider, useData] = createContextHook(() => {
     console.log('[Data] Deleting property:', id);
     const { error } = await supabase.from('properties').delete().eq('id', id);
     if (error) console.log('[Data] Delete property error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['properties', userId] });
-    queryClient.invalidateQueries({ queryKey: ['units', userId] });
-    queryClient.invalidateQueries({ queryKey: ['requests', userId] });
-    queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
   }, [userId, queryClient]);
 
   const addUnit = useCallback(async (data: Omit<Unit, 'id'>) => {
@@ -360,9 +401,9 @@ export const [DataProvider, useData] = createContextHook(() => {
       return null;
     }
     const newUnit = mapUnit(inserted);
-    queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
     const prop = properties.find(p => p.id === data.propertyId);
-    addActivityRecord({ type: 'unit_added', title: 'Unit added', subtitle: `${newUnit.label} at ${prop?.name ?? 'property'}`, relatedId: newUnit.id });
+    void addActivityRecord({ type: 'unit_added', title: 'Unit added', subtitle: `${newUnit.label} at ${prop?.name ?? 'property'}`, relatedId: newUnit.id });
     return newUnit;
   }, [userId, queryClient, properties, addActivityRecord]);
 
@@ -382,7 +423,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (data.tenantPortalActive !== undefined) updateData.tenant_portal_active = data.tenantPortalActive;
     const { error } = await supabase.from('units').update(updateData).eq('id', id);
     if (error) console.log('[Data] Update unit error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
   }, [userId, queryClient]);
 
   const deleteUnit = useCallback(async (id: string) => {
@@ -390,7 +431,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     console.log('[Data] Deleting unit:', id);
     const { error } = await supabase.from('units').delete().eq('id', id);
     if (error) console.log('[Data] Delete unit error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
   }, [userId, queryClient]);
 
   const inviteTenant = useCallback(async (unitId: string) => {
@@ -411,10 +452,10 @@ export const [DataProvider, useData] = createContextHook(() => {
       })
       .eq('id', unitId);
     if (error) console.log('[Data] Invite tenant error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
     const unit = units.find(u => u.id === unitId);
     const prop = properties.find(p => p.id === unit?.propertyId);
-    addActivityRecord({
+    void addActivityRecord({
       type: 'tenant_invited',
       title: 'Tenant invited',
       subtitle: `${unit?.tenantName ?? 'Tenant'} at ${prop?.name ?? 'property'}`,
@@ -447,8 +488,8 @@ export const [DataProvider, useData] = createContextHook(() => {
       return null;
     }
     const newRequest = mapRequest(inserted);
-    queryClient.invalidateQueries({ queryKey: ['requests', userId] });
-    addActivityRecord({
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+    void addActivityRecord({
       type: 'request_created',
       title: 'New request',
       subtitle: `${data.category} - ${data.propertyName} ${data.unitLabel}`,
@@ -465,9 +506,9 @@ export const [DataProvider, useData] = createContextHook(() => {
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', id);
     if (error) console.log('[Data] Update request status error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
     const req = requests.find(r => r.id === id);
-    addActivityRecord({
+    void addActivityRecord({
       type: 'request_updated',
       title: `Request ${status === 'in_progress' ? 'acknowledged' : 'resolved'}`,
       subtitle: `${req?.propertyName ?? ''} ${req?.unitLabel ?? ''}`,
@@ -494,8 +535,8 @@ export const [DataProvider, useData] = createContextHook(() => {
       return null;
     }
     const newMessage = mapMessage(inserted);
-    queryClient.invalidateQueries({ queryKey: ['messages', userId] });
-    addActivityRecord({
+    void queryClient.invalidateQueries({ queryKey: ['messages', userId] });
+    void addActivityRecord({
       type: 'message_sent',
       title: 'Message sent',
       subtitle: data.body.substring(0, 60),
@@ -527,9 +568,9 @@ export const [DataProvider, useData] = createContextHook(() => {
       return null;
     }
     const newExpense = mapExpense(inserted);
-    queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
     const prop = properties.find(p => p.id === data.propertyId);
-    addActivityRecord({
+    void addActivityRecord({
       type: 'expense_added',
       title: 'Expense logged',
       subtitle: `$${data.amount.toFixed(2)} - ${prop?.name ?? 'property'}`,
@@ -543,7 +584,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     console.log('[Data] Deleting expense:', id);
     const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (error) console.log('[Data] Delete expense error:', error.message);
-    queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
   }, [userId, queryClient]);
 
   const updateProfile = useCallback(async (data: Partial<UserProfile>) => {
@@ -559,7 +600,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     const { error } = await supabase.from('profiles').update(updateData).eq('id', userId);
     if (error) console.log('[Data] Update profile error:', error.message);
     setProfile(prev => ({ ...prev, ...data }));
-    queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['profile', userId] });
   }, [userId, queryClient]);
 
   const getUnitsForProperty = useCallback((propertyId: string) => {
@@ -612,7 +653,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     ]);
   }, [queryClient, userId]);
 
-  return {
+  return useMemo(() => ({
     properties,
     units,
     requests,
@@ -644,5 +685,13 @@ export const [DataProvider, useData] = createContextHook(() => {
     occupiedUnitCount,
     totalExpenses,
     refetchAll,
-  };
+  }), [
+    properties, units, requests, messages, expenses, activities, recentActivities,
+    profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
+    updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
+    addMessage, addExpense, deleteExpense, updateProfile, getUnitsForProperty,
+    getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
+    getExpensesForProperty, openRequestCount, occupiedUnitCount, totalExpenses,
+    refetchAll,
+  ]);
 });

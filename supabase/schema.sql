@@ -205,6 +205,61 @@ create policy "Owners can insert own activities" on public.activities
   for insert with check (auth.uid() = owner_id);
 
 -- ============================================
+-- TENANT RLS POLICIES
+-- ============================================
+
+-- Tenants can view their linked unit
+create policy "Tenants can view own unit" on public.units
+  for select using (auth.uid() = tenant_user_id);
+
+-- Tenants can view the property their unit belongs to
+create policy "Tenants can view unit property" on public.properties
+  for select using (exists (
+    select 1 from public.units u where u.property_id = id and u.tenant_user_id = auth.uid()
+  ));
+
+-- Tenants can view requests for their unit
+create policy "Tenants can view unit requests" on public.maintenance_requests
+  for select using (exists (
+    select 1 from public.units u where u.id = unit_id and u.tenant_user_id = auth.uid()
+  ));
+
+-- Tenants can insert requests for their unit
+create policy "Tenants can insert requests" on public.maintenance_requests
+  for insert with check (exists (
+    select 1 from public.units u where u.id = unit_id and u.tenant_user_id = auth.uid()
+  ));
+
+-- Tenants can view messages on their requests
+create policy "Tenants can view request messages" on public.messages
+  for select using (exists (
+    select 1 from public.maintenance_requests mr
+    join public.units u on u.id = mr.unit_id
+    where mr.id = request_id and u.tenant_user_id = auth.uid()
+  ));
+
+-- Tenants can send messages on their requests
+create policy "Tenants can insert messages" on public.messages
+  for insert with check (auth.uid() = sender_id and exists (
+    select 1 from public.maintenance_requests mr
+    join public.units u on u.id = mr.unit_id
+    where mr.id = request_id and u.tenant_user_id = auth.uid()
+  ));
+
+-- Tenants can update their own unit (for linking tenant_user_id)
+create policy "Tenants can update own unit" on public.units
+  for update using (
+    auth.uid() = tenant_user_id
+    or (is_invited = true and invite_code is not null)
+  );
+
+-- ============================================
+-- ENABLE REALTIME for messages table
+-- ============================================
+alter publication supabase_realtime add table public.messages;
+alter publication supabase_realtime add table public.maintenance_requests;
+
+-- ============================================
 -- AUTO-CREATE PROFILE ON SIGNUP
 -- ============================================
 create or replace function public.handle_new_user()

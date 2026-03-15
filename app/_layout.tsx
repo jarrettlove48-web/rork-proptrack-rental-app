@@ -7,29 +7,53 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { DataProvider } from "@/context/DataContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
+import { TenantProvider, useTenant } from "@/context/TenantContext";
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function useProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isTenantRole, tenantSession, isLoading: tenantLoading } = useTenant();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoading) return;
+    if (authLoading || tenantLoading) return;
 
-    const inAuthScreen = (segments as string[])[0] === 'auth';
+    const firstSegment = (segments as string[])[0];
+    const inAuthScreen = firstSegment === 'auth';
+    const inTenantAuth = firstSegment === 'tenant-auth';
+    const inTenantPortal = firstSegment === 'tenant-portal';
 
-    if (!isAuthenticated && !inAuthScreen) {
+    if (!isAuthenticated && !inAuthScreen && !inTenantAuth) {
       console.log('[Router] Not authenticated, redirecting to auth');
       router.replace('/auth' as never);
-    } else if (isAuthenticated && inAuthScreen) {
-      console.log('[Router] Authenticated, redirecting to home');
+      return;
+    }
+
+    if (isAuthenticated && isTenantRole && tenantSession) {
+      if (!inTenantPortal) {
+        console.log('[Router] Tenant with session, redirecting to portal');
+        router.replace('/tenant-portal' as never);
+      }
+      return;
+    }
+
+    if (isAuthenticated && isTenantRole && !tenantSession) {
+      if (!inTenantAuth) {
+        console.log('[Router] Tenant without session, redirecting to tenant-auth');
+        router.replace('/tenant-auth' as never);
+      }
+      return;
+    }
+
+    if (isAuthenticated && !isTenantRole && (inAuthScreen || inTenantAuth)) {
+      console.log('[Router] Landlord authenticated, redirecting to home');
       router.replace('/' as never);
     }
-  }, [isAuthenticated, isLoading, segments, router]);
+  }, [isAuthenticated, authLoading, tenantLoading, isTenantRole, tenantSession, segments, router]);
 }
 
 function RootLayoutNav() {
@@ -48,6 +72,8 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="tenant-auth" options={{ headerShown: false }} />
+      <Stack.Screen name="tenant-portal" options={{ headerShown: false }} />
       <Stack.Screen name="add-property" options={{ presentation: "modal", title: "Add Property" }} />
       <Stack.Screen name="add-unit" options={{ presentation: "modal", title: "Add Unit" }} />
       <Stack.Screen name="submit-request" options={{ presentation: "modal", title: "New Request" }} />
@@ -57,7 +83,6 @@ function RootLayoutNav() {
       <Stack.Screen name="tenant-profile" options={{ title: "Tenant Profile" }} />
       <Stack.Screen name="add-expense" options={{ presentation: "modal", title: "Add Expense" }} />
       <Stack.Screen name="invite-tenant" options={{ presentation: "modal", title: "Invite Tenant" }} />
-      <Stack.Screen name="tenant-portal" options={{ title: "Tenant Portal" }} />
       <Stack.Screen name="paywall" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
@@ -66,7 +91,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   useEffect(() => {
-    SplashScreen.hideAsync();
+    void SplashScreen.hideAsync();
   }, []);
 
   return (
@@ -76,7 +101,9 @@ export default function RootLayout() {
           <ThemeProvider>
             <SubscriptionProvider>
               <DataProvider>
-                <RootLayoutNav />
+                <TenantProvider>
+                  <RootLayoutNav />
+                </TenantProvider>
               </DataProvider>
             </SubscriptionProvider>
           </ThemeProvider>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,43 +8,102 @@ import {
   TextInput,
   Animated,
   Platform,
+  KeyboardAvoidingView,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Home, Wrench, MessageCircle, Plus, ChevronRight, AlertCircle, Clock, CheckCircle, Send, User } from 'lucide-react-native';
+import { Stack } from 'expo-router';
+import { Home, Wrench, MessageCircle, Plus, AlertCircle, Clock, CheckCircle, Send, User, LogOut, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useData } from '@/context/DataContext';
+import { useTenant } from '@/context/TenantContext';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDate, getStatusColor } from '@/utils/helpers';
-import { REQUEST_CATEGORIES, STATUS_LABELS, MaintenanceRequest } from '@/types';
+import { REQUEST_CATEGORIES, STATUS_LABELS, RequestCategory, MaintenanceRequest } from '@/types';
 
 type PortalTab = 'home' | 'requests' | 'messages';
 
 export default function TenantPortalScreen() {
-  const { unitId } = useLocalSearchParams<{ unitId: string }>();
-  const router = useRouter();
-  const { units, properties, requests, messages, getRequestsForUnit, getMessagesForRequest } = useData();
+  const { unit, property, requests, openRequests, resolvedRequests, submitRequest, sendMessage, getMessagesForRequest, logout, refetchAll } = useTenant();
+  const { signOut } = useAuth();
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<PortalTab>('home');
+  const [refreshing, setRefreshing] = useState(false);
   const tabIndicator = useRef(new Animated.Value(0)).current;
   const fadeIn = useRef(new Animated.Value(0)).current;
 
-  const unit = useMemo(() => units.find(u => u.id === unitId), [units, unitId]);
-  const property = useMemo(() => properties.find(p => p.id === unit?.propertyId), [properties, unit]);
-  const unitRequests = useMemo(() => getRequestsForUnit(unitId ?? ''), [getRequestsForUnit, unitId]);
-  const openRequests = useMemo(() => unitRequests.filter(r => r.status !== 'resolved'), [unitRequests]);
-  const resolvedRequests = useMemo(() => unitRequests.filter(r => r.status === 'resolved'), [unitRequests]);
+  const [selectedCategory, setSelectedCategory] = useState<RequestCategory | null>(null);
+  const [requestDescription, setRequestDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }).start();
-  }, []);
+  }, [fadeIn]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetchAll();
+    setRefreshing(false);
+  }, [refetchAll]);
 
   const handleTabChange = useCallback((tab: PortalTab) => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     setActiveTab(tab);
+    setActiveRequestId(null);
     const toValue = tab === 'home' ? 0 : tab === 'requests' ? 1 : 2;
     Animated.spring(tabIndicator, { toValue, friction: 8, tension: 80, useNativeDriver: true }).start();
   }, [tabIndicator]);
+
+  const handleSubmitRequest = useCallback(async () => {
+    if (!selectedCategory || !requestDescription.trim()) {
+      Alert.alert('Missing Info', 'Please select a category and describe the issue.');
+      return;
+    }
+    setIsSubmitting(true);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const result = await submitRequest({
+      category: selectedCategory,
+      description: requestDescription.trim(),
+    });
+    setIsSubmitting(false);
+    if (result) {
+      Alert.alert('Request Submitted', 'Your maintenance request has been sent to your landlord.');
+      setSelectedCategory(null);
+      setRequestDescription('');
+      handleTabChange('home');
+    }
+  }, [selectedCategory, requestDescription, submitRequest, handleTabChange]);
+
+  const handleSendMessage = useCallback(async () => {
+    if (!messageText.trim() || !activeRequestId) return;
+    setIsSending(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await sendMessage(activeRequestId, messageText.trim());
+    setMessageText('');
+    setIsSending(false);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
+  }, [messageText, activeRequestId, sendMessage]);
+
+  const handleLogout = useCallback(() => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          await signOut();
+        },
+      },
+    ]);
+  }, [logout, signOut]);
 
   const getStatusIcon = useCallback((status: MaintenanceRequest['status']) => {
     switch (status) {
@@ -57,17 +116,23 @@ export default function TenantPortalScreen() {
   if (!unit || !property) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: 'Tenant Portal' }} />
-        <Text style={[styles.errorText, { color: colors.textSecondary }]}>Unit not found</Text>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading your portal...</Text>
+        </View>
       </View>
     );
   }
+
+  const activeMessages = activeRequestId ? getMessagesForRequest(activeRequestId) : [];
+  const activeRequest = activeRequestId ? requests.find(r => r.id === activeRequestId) : null;
 
   const renderHome = () => (
     <Animated.View style={[styles.tabContent, { opacity: fadeIn }]}>
       <View style={[styles.welcomeCard, { backgroundColor: colors.primary }]}>
         <Text style={[styles.welcomeGreeting, { color: colors.textInverse }]}>
-          Welcome back, {unit.tenantName?.split(' ')[0] || 'Tenant'}
+          Welcome, {unit.tenantName?.split(' ')[0] || 'Tenant'}
         </Text>
         <Text style={[styles.welcomeLocation, { color: colors.textInverse }]}>
           {property.name} · {unit.label}
@@ -106,7 +171,15 @@ export default function TenantPortalScreen() {
             const catInfo = REQUEST_CATEGORIES.find(c => c.key === req.category);
             const statusColor = getStatusColor(req.status);
             return (
-              <View key={req.id} style={[styles.requestCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={req.id}
+                style={[styles.requestCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => {
+                  setActiveRequestId(req.id);
+                  handleTabChange('messages');
+                }}
+                activeOpacity={0.7}
+              >
                 <View style={styles.requestTop}>
                   <Text style={styles.requestEmoji}>{catInfo?.icon}</Text>
                   <View style={styles.requestInfo}>
@@ -142,13 +215,13 @@ export default function TenantPortalScreen() {
                     );
                   })}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
       )}
 
-      {unitRequests.length === 0 && (
+      {requests.length === 0 && (
         <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Wrench size={28} color={colors.primaryLight} strokeWidth={1.5} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>No requests yet</Text>
@@ -163,50 +236,82 @@ export default function TenantPortalScreen() {
   const renderRequests = () => (
     <View style={styles.tabContent}>
       <View style={[styles.submitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.submitTitle, { color: colors.text }]}>Submit a Request</Text>
-        <Text style={[styles.submitDesc, { color: colors.textTertiary }]}>Pick a category, describe the issue, and submit.</Text>
+        <Text style={[styles.submitTitle, { color: colors.text }]}>New Maintenance Request</Text>
+        <Text style={[styles.submitDesc, { color: colors.textTertiary }]}>Pick a category and describe the issue.</Text>
 
         <View style={styles.categoryGrid}>
-          {REQUEST_CATEGORIES.map(cat => (
-            <TouchableOpacity
-              key={cat.key}
-              style={[styles.categoryCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
-              onPress={() => Haptics.selectionAsync()}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.categoryCardEmoji}>{cat.icon}</Text>
-              <Text style={[styles.categoryCardLabel, { color: colors.text }]}>{cat.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {REQUEST_CATEGORIES.map(cat => {
+            const isActive = selectedCategory === cat.key;
+            return (
+              <TouchableOpacity
+                key={cat.key}
+                style={[
+                  styles.categoryCard,
+                  { backgroundColor: isActive ? colors.primaryFaint : colors.surfaceSecondary, borderColor: isActive ? colors.primary : colors.border },
+                ]}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setSelectedCategory(cat.key);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.categoryCardEmoji}>{cat.icon}</Text>
+                <Text style={[styles.categoryCardLabel, { color: isActive ? colors.primary : colors.text }]}>{cat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <TextInput
           style={[styles.descInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.text }]}
-          placeholder="Describe the issue..."
+          placeholder="Describe the issue in detail..."
           placeholderTextColor={colors.textTertiary}
           multiline
-          numberOfLines={3}
+          numberOfLines={4}
           textAlignVertical="top"
+          value={requestDescription}
+          onChangeText={setRequestDescription}
+          testID="tenant-request-description"
         />
 
         <TouchableOpacity
-          style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-          onPress={() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)}
+          style={[
+            styles.submitBtn,
+            { backgroundColor: colors.primary },
+            (!selectedCategory || !requestDescription.trim()) && styles.submitBtnDisabled,
+          ]}
+          onPress={handleSubmitRequest}
+          disabled={!selectedCategory || !requestDescription.trim() || isSubmitting}
           activeOpacity={0.8}
+          testID="tenant-submit-request-btn"
         >
-          <Send size={14} color={colors.textInverse} strokeWidth={2} />
-          <Text style={[styles.submitBtnText, { color: colors.textInverse }]}>Submit Request</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Send size={14} color={colors.textInverse} strokeWidth={2} />
+              <Text style={[styles.submitBtnText, { color: colors.textInverse }]}>Submit Request</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
-      {unitRequests.length > 0 && (
+      {requests.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>My Requests</Text>
-          {unitRequests.map(req => {
+          {requests.map(req => {
             const catInfo = REQUEST_CATEGORIES.find(c => c.key === req.category);
             const statusColor = getStatusColor(req.status);
             return (
-              <View key={req.id} style={[styles.requestListItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={req.id}
+                style={[styles.requestListItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => {
+                  setActiveRequestId(req.id);
+                  handleTabChange('messages');
+                }}
+                activeOpacity={0.7}
+              >
                 <View style={styles.requestListTop}>
                   <Text style={styles.requestEmoji}>{catInfo?.icon}</Text>
                   <Text style={[styles.requestListTitle, { color: colors.text }]} numberOfLines={1}>{req.description}</Text>
@@ -218,7 +323,7 @@ export default function TenantPortalScreen() {
                   </View>
                   <Text style={[styles.requestListDate, { color: colors.textTertiary }]}>{formatDate(req.createdAt)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -226,25 +331,136 @@ export default function TenantPortalScreen() {
     </View>
   );
 
+  const renderMessageThread = () => {
+    if (!activeRequest) return null;
+    const catInfo = REQUEST_CATEGORIES.find(c => c.key === activeRequest.category);
+
+    return (
+      <KeyboardAvoidingView
+        style={styles.chatContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={160}
+      >
+        <View style={[styles.chatHeader, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
+          <TouchableOpacity onPress={() => setActiveRequestId(null)} style={styles.chatBackBtn}>
+            <ChevronRight size={16} color={colors.textTertiary} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
+          </TouchableOpacity>
+          <Text style={styles.chatHeaderEmoji}>{catInfo?.icon}</Text>
+          <View style={styles.chatHeaderInfo}>
+            <Text style={[styles.chatHeaderTitle, { color: colors.text }]} numberOfLines={1}>{activeRequest.description}</Text>
+            <Text style={[styles.chatHeaderMeta, { color: colors.textTertiary }]}>
+              {STATUS_LABELS[activeRequest.status]} · {activeMessages.length} messages
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView
+          ref={scrollRef}
+          style={styles.chatMessages}
+          contentContainerStyle={styles.chatMessagesContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {activeMessages.length === 0 && (
+            <View style={styles.chatEmpty}>
+              <MessageCircle size={24} color={colors.textTertiary} strokeWidth={1.5} />
+              <Text style={[styles.chatEmptyText, { color: colors.textTertiary }]}>
+                No messages yet. Send a message to your landlord.
+              </Text>
+            </View>
+          )}
+          {activeMessages.map(msg => (
+            <View
+              key={msg.id}
+              style={[
+                styles.messageBubble,
+                msg.senderRole === 'tenant'
+                  ? [styles.messageBubbleSent, { backgroundColor: colors.primary }]
+                  : [styles.messageBubbleReceived, { backgroundColor: colors.surfaceSecondary }],
+              ]}
+            >
+              <Text style={[
+                styles.messageSender,
+                { color: colors.textSecondary },
+                msg.senderRole === 'tenant' && { color: 'rgba(255,255,255,0.7)' },
+              ]}>
+                {msg.senderRole === 'tenant' ? 'You' : msg.senderName || 'Landlord'}
+              </Text>
+              <Text style={[
+                styles.messageBody,
+                { color: colors.text },
+                msg.senderRole === 'tenant' && { color: colors.textInverse },
+              ]}>
+                {msg.body}
+              </Text>
+              <Text style={[
+                styles.messageTime,
+                { color: colors.textTertiary },
+                msg.senderRole === 'tenant' && { color: 'rgba(255,255,255,0.5)' },
+              ]}>
+                {formatDate(msg.timestamp)}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={[styles.chatInputBar, { backgroundColor: colors.surface, borderTopColor: colors.divider }]}>
+          <TextInput
+            style={[styles.chatInput, { backgroundColor: colors.surfaceSecondary, color: colors.text }]}
+            value={messageText}
+            onChangeText={setMessageText}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.textTertiary}
+            multiline
+            testID="tenant-message-input"
+          />
+          <TouchableOpacity
+            style={[styles.chatSendBtn, { backgroundColor: messageText.trim() ? colors.primary : colors.surfaceTertiary }]}
+            onPress={handleSendMessage}
+            disabled={!messageText.trim() || isSending}
+            testID="tenant-send-message-btn"
+          >
+            {isSending ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Send size={16} color={messageText.trim() ? colors.textInverse : colors.textTertiary} strokeWidth={2} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  };
+
   const renderMessages = () => {
+    if (activeRequestId && activeRequest) {
+      return renderMessageThread();
+    }
+
     return (
       <View style={styles.tabContent}>
-        {unitRequests.length === 0 ? (
+        {requests.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <MessageCircle size={28} color={colors.primaryLight} strokeWidth={1.5} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No conversations</Text>
             <Text style={[styles.emptyDesc, { color: colors.textTertiary }]}>
-              Messages appear here once you have an active request.
+              Messages appear here once you have a maintenance request.
             </Text>
           </View>
         ) : (
           <>
-            {unitRequests.map(req => {
+            {requests.map(req => {
               const reqMessages = getMessagesForRequest(req.id);
               const lastMsg = reqMessages[reqMessages.length - 1];
               const catInfo = REQUEST_CATEGORIES.find(c => c.key === req.category);
               return (
-                <View key={req.id} style={[styles.messageThread, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <TouchableOpacity
+                  key={req.id}
+                  style={[styles.messageThread, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setActiveRequestId(req.id);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.messageThreadHeader}>
                     <Text style={styles.requestEmoji}>{catInfo?.icon}</Text>
                     <View style={styles.messageThreadInfo}>
@@ -260,7 +476,7 @@ export default function TenantPortalScreen() {
                   {lastMsg && (
                     <View style={[styles.lastMessage, { backgroundColor: colors.surfaceSecondary }]}>
                       <Text style={[styles.lastMessageSender, { color: colors.textSecondary }]}>
-                        {lastMsg.senderRole === 'landlord' ? 'Landlord' : 'You'}:
+                        {lastMsg.senderRole === 'tenant' ? 'You' : 'Landlord'}:
                       </Text>
                       <Text style={[styles.lastMessageBody, { color: colors.text }]} numberOfLines={2}>
                         {lastMsg.body}
@@ -274,7 +490,7 @@ export default function TenantPortalScreen() {
                       </Text>
                     </View>
                   )}
-                </View>
+                </TouchableOpacity>
               );
             })}
           </>
@@ -293,23 +509,21 @@ export default function TenantPortalScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen
-        options={{
-          title: 'Tenant Portal',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerRight: () => (
-            <View style={[styles.previewBadge, { backgroundColor: colors.accentLight }]}>
-              <Text style={[styles.previewBadgeText, { color: colors.accent }]}>Preview</Text>
-            </View>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
       <View style={[styles.portalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
-        <View style={[styles.tenantBadge, { backgroundColor: colors.primaryFaint }]}>
-          <User size={12} color={colors.primary} strokeWidth={2} />
-          <Text style={[styles.tenantBadgeText, { color: colors.primary }]}>{unit.tenantName}</Text>
+        <View style={styles.portalHeaderTop}>
+          <View style={[styles.tenantBadge, { backgroundColor: colors.primaryFaint }]}>
+            <User size={12} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.tenantBadgeText, { color: colors.primary }]}>{unit.tenantName}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.logoutBtn, { backgroundColor: colors.dangerLight }]}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <LogOut size={13} color={colors.danger} strokeWidth={2} />
+          </TouchableOpacity>
         </View>
         <View style={styles.tabBar}>
           {tabs.map((tab) => (
@@ -347,11 +561,21 @@ export default function TenantPortalScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {activeTab === 'home' && renderHome()}
-        {activeTab === 'requests' && renderRequests()}
-        {activeTab === 'messages' && renderMessages()}
-      </ScrollView>
+      {activeTab === 'messages' && activeRequestId ? (
+        renderMessages()
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+          }
+        >
+          {activeTab === 'home' && renderHome()}
+          {activeTab === 'requests' && renderRequests()}
+          {activeTab === 'messages' && renderMessages()}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -359,12 +583,13 @@ export default function TenantPortalScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
-  errorText: { fontSize: 16, textAlign: 'center', marginTop: 40 },
-  portalHeader: { paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 0.5 },
-  tenantBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, gap: 6, marginBottom: 12 },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14 },
+  portalHeader: { paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 60 : 44, borderBottomWidth: 0.5 },
+  portalHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  tenantBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, gap: 6 },
   tenantBadgeText: { fontSize: 13, fontWeight: '600' as const },
-  previewBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  previewBadgeText: { fontSize: 11, fontWeight: '700' as const },
+  logoutBtn: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabBar: { flexDirection: 'row', position: 'relative' },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: 10, gap: 4 },
   tabLabel: { fontSize: 12, fontWeight: '500' as const },
@@ -402,11 +627,12 @@ const styles = StyleSheet.create({
   submitTitle: { fontSize: 18, fontWeight: '600' as const, marginBottom: 4, letterSpacing: -0.2 },
   submitDesc: { fontSize: 13, marginBottom: 16 },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  categoryCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, gap: 6 },
+  categoryCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, gap: 6 },
   categoryCardEmoji: { fontSize: 16 },
   categoryCardLabel: { fontSize: 13, fontWeight: '500' as const },
-  descInput: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, minHeight: 80, borderWidth: 1, marginBottom: 16 },
+  descInput: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, minHeight: 100, borderWidth: 1, marginBottom: 16 },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 8 },
+  submitBtnDisabled: { opacity: 0.4 },
   submitBtnText: { fontSize: 15, fontWeight: '600' as const },
   requestListItem: { borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1 },
   requestListTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -423,4 +649,24 @@ const styles = StyleSheet.create({
   lastMessage: { borderRadius: 10, padding: 12, marginTop: 10 },
   lastMessageSender: { fontSize: 12, fontWeight: '600' as const, marginBottom: 2 },
   lastMessageBody: { fontSize: 13, lineHeight: 18 },
+  chatContainer: { flex: 1 },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, gap: 8 },
+  chatBackBtn: { padding: 4 },
+  chatHeaderEmoji: { fontSize: 18 },
+  chatHeaderInfo: { flex: 1 },
+  chatHeaderTitle: { fontSize: 14, fontWeight: '600' as const },
+  chatHeaderMeta: { fontSize: 12, marginTop: 1 },
+  chatMessages: { flex: 1 },
+  chatMessagesContent: { padding: 16, paddingBottom: 8 },
+  chatEmpty: { alignItems: 'center', paddingVertical: 40, gap: 8 },
+  chatEmptyText: { fontSize: 14, textAlign: 'center' },
+  messageBubble: { maxWidth: '80%', borderRadius: 16, padding: 12, marginBottom: 8 },
+  messageBubbleSent: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  messageBubbleReceived: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  messageSender: { fontSize: 11, fontWeight: '600' as const, marginBottom: 3 },
+  messageBody: { fontSize: 15, lineHeight: 20 },
+  messageTime: { fontSize: 10, marginTop: 4, textAlign: 'right' },
+  chatInputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, borderTopWidth: 0.5, gap: 8 },
+  chatInput: { flex: 1, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100 },
+  chatSendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
