@@ -11,12 +11,13 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
-import { X, DollarSign, ChevronDown } from 'lucide-react-native';
+import { X, DollarSign, ChevronDown, Camera, Crown, Repeat } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { canTrackExpenses } from '@/constants/plans';
+import * as ImagePicker from 'expo-image-picker';
 import { EXPENSE_CATEGORIES, Expense } from '@/types';
 
 export default function AddExpenseScreen() {
@@ -34,6 +35,9 @@ export default function AddExpenseScreen() {
   const [vendor, setVendor] = useState('');
   const [showPropertyPicker, setShowPropertyPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [receiptUri, setReceiptUri] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const { isPro } = useSubscription();
 
   const availableUnits = useMemo(() => units.filter(u => u.propertyId === selectedPropertyId), [units, selectedPropertyId]);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId), [properties, selectedPropertyId]);
@@ -227,6 +231,76 @@ export default function AddExpenseScreen() {
           </View>
         </View>
 
+        {isPro && (
+          <View style={styles.fieldGroup}>
+            <View style={styles.proLabelRow}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Receipt Photo</Text>
+              <View style={[styles.proBadge, { backgroundColor: colors.accentLight }]}>
+                <Crown size={10} color={colors.accent} strokeWidth={2} />
+                <Text style={[styles.proBadgeText, { color: colors.accent }]}>PRO</Text>
+              </View>
+            </View>
+            {receiptUri ? (
+              <View style={[styles.receiptPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Camera size={16} color={colors.success} strokeWidth={2} />
+                <Text style={[styles.receiptText, { color: colors.success }]} numberOfLines={1}>Receipt attached</Text>
+                <TouchableOpacity onPress={() => setReceiptUri('')}>
+                  <X size={16} color={colors.textTertiary} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.receiptBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      quality: 0.7,
+                    });
+                    if (!result.canceled && result.assets[0]) {
+                      setReceiptUri(result.assets[0].uri);
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                  } catch (e) {
+                    console.log('[AddExpense] Image picker failed:', e);
+                  }
+                }}
+              >
+                <Camera size={18} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.receiptBtnText, { color: colors.textSecondary }]}>Attach Receipt Photo</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {isPro && (
+          <View style={styles.fieldGroup}>
+            <View style={styles.proLabelRow}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Recurring</Text>
+              <View style={[styles.proBadge, { backgroundColor: colors.accentLight }]}>
+                <Crown size={10} color={colors.accent} strokeWidth={2} />
+                <Text style={[styles.proBadgeText, { color: colors.accent }]}>PRO</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.recurringBtn,
+                { backgroundColor: colors.surface, borderColor: isRecurring ? colors.primary : colors.border },
+                isRecurring && { backgroundColor: colors.primaryFaint },
+              ]}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setIsRecurring(!isRecurring);
+              }}
+            >
+              <Repeat size={16} color={isRecurring ? colors.primary : colors.textTertiary} strokeWidth={2} />
+              <Text style={[styles.recurringBtnText, { color: isRecurring ? colors.primary : colors.textSecondary }]}>
+                {isRecurring ? 'Monthly recurring expense' : 'Mark as recurring monthly'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[styles.submitBtn, { backgroundColor: colors.primary }, !isValid && styles.submitBtnDisabled]}
           onPress={handleSubmit}
@@ -269,4 +343,13 @@ const styles = StyleSheet.create({
   lockedSection: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },
   upgradeBtn: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, marginTop: 8 },
   upgradeBtnText: { fontSize: 16, fontWeight: '600' as const },
+  proLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  proBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, gap: 3 },
+  proBadgeText: { fontSize: 9, fontWeight: '700' as const, letterSpacing: 0.5 },
+  receiptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 16, borderWidth: 1, borderStyle: 'dashed' as const, gap: 8 },
+  receiptBtnText: { fontSize: 14, fontWeight: '500' as const },
+  receiptPreview: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, gap: 8 },
+  receiptText: { flex: 1, fontSize: 14, fontWeight: '500' as const },
+  recurringBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, borderWidth: 1, gap: 10 },
+  recurringBtnText: { fontSize: 14, fontWeight: '500' as const },
 });

@@ -10,7 +10,6 @@ import {
   Alert,
   Platform,
   Share,
-  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -19,17 +18,14 @@ import {
   Plus,
   DollarSign,
   Download,
-  ChevronDown,
-  ChevronUp,
   SlidersHorizontal,
   TrendingUp,
-  Calendar,
-  Trash2,
-  ArrowUpDown,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canTrackExpenses } from '@/constants/plans';
 import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { formatCurrency, formatShortDate, expensesToCsv } from '@/utils/helpers';
 
@@ -60,6 +56,8 @@ export default function ExpensesScreen() {
   const router = useRouter();
   const { expenses, properties, units, deleteExpense, refetchAll } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
+  const canExpense = canTrackExpenses(currentPlan);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -160,7 +158,7 @@ export default function ExpensesScreen() {
       Alert.alert('No Data', 'There are no expenses to export with the current filters.');
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const csv = expensesToCsv(filteredExpenses);
     const totalLine = `\nTotal,,"${formatCurrency(totalFiltered)}",,,,`;
     const fullCsv = csv + totalLine;
@@ -199,8 +197,8 @@ export default function ExpensesScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            deleteExpense(id);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            void deleteExpense(id);
           },
         },
       ]
@@ -208,7 +206,7 @@ export default function ExpensesScreen() {
   }, [deleteExpense]);
 
   const toggleSort = useCallback((field: SortField) => {
-    Haptics.selectionAsync();
+    void Haptics.selectionAsync();
     if (sortField === field) {
       setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
     } else {
@@ -222,14 +220,6 @@ export default function ExpensesScreen() {
     setPropertyFilter('all');
     setDateRange('all');
     setSearchQuery('');
-  }, []);
-
-  const getCategoryIcon = useCallback((category: string) => {
-    return EXPENSE_CATEGORIES.find(c => c.key === category)?.icon ?? '📋';
-  }, []);
-
-  const getCategoryLabel = useCallback((category: string) => {
-    return EXPENSE_CATEGORIES.find(c => c.key === category)?.label ?? category;
   }, []);
 
   const renderExpense = useCallback(({ item }: { item: typeof enrichedExpenses[0] }) => {
@@ -339,7 +329,7 @@ export default function ExpensesScreen() {
                   { backgroundColor: colors.surfaceSecondary },
                   dateRange === d.key && { backgroundColor: colors.text },
                 ]}
-                onPress={() => { Haptics.selectionAsync(); setDateRange(d.key); }}
+                onPress={() => { void Haptics.selectionAsync(); setDateRange(d.key); }}
               >
                 <Text style={[
                   styles.chipText,
@@ -362,7 +352,7 @@ export default function ExpensesScreen() {
                 { backgroundColor: colors.surfaceSecondary },
                 categoryFilter === 'all' && { backgroundColor: colors.text },
               ]}
-              onPress={() => { Haptics.selectionAsync(); setCategoryFilter('all'); }}
+              onPress={() => { void Haptics.selectionAsync(); setCategoryFilter('all'); }}
             >
               <Text style={[
                 styles.chipText,
@@ -380,7 +370,7 @@ export default function ExpensesScreen() {
                   { backgroundColor: colors.surfaceSecondary },
                   categoryFilter === cat.key && { backgroundColor: colors.text },
                 ]}
-                onPress={() => { Haptics.selectionAsync(); setCategoryFilter(cat.key); }}
+                onPress={() => { void Haptics.selectionAsync(); setCategoryFilter(cat.key); }}
               >
                 <Text style={[
                   styles.chipText,
@@ -404,7 +394,7 @@ export default function ExpensesScreen() {
                   { backgroundColor: colors.surfaceSecondary },
                   propertyFilter === 'all' && { backgroundColor: colors.text },
                 ]}
-                onPress={() => { Haptics.selectionAsync(); setPropertyFilter('all'); }}
+                onPress={() => { void Haptics.selectionAsync(); setPropertyFilter('all'); }}
               >
                 <Text style={[
                   styles.chipText,
@@ -422,7 +412,7 @@ export default function ExpensesScreen() {
                     { backgroundColor: colors.surfaceSecondary },
                     propertyFilter === p.id && { backgroundColor: colors.text },
                   ]}
-                  onPress={() => { Haptics.selectionAsync(); setPropertyFilter(p.id); }}
+                  onPress={() => { void Haptics.selectionAsync(); setPropertyFilter(p.id); }}
                 >
                   <Text style={[
                     styles.chipText,
@@ -503,7 +493,7 @@ export default function ExpensesScreen() {
               activeFilterCount > 0 && { backgroundColor: colors.primaryFaint },
             ]}
             onPress={() => {
-              Haptics.selectionAsync();
+              void Haptics.selectionAsync();
               setShowFilters(!showFilters);
             }}
           >
@@ -524,7 +514,7 @@ export default function ExpensesScreen() {
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: colors.primary }]}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               router.push('/add-expense' as never);
             }}
             testID="add-expense-btn"
@@ -579,7 +569,7 @@ export default function ExpensesScreen() {
         <TouchableOpacity
           style={[styles.emptyCta, { backgroundColor: colors.primary }]}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push('/add-expense' as never);
           }}
         >
@@ -589,6 +579,40 @@ export default function ExpensesScreen() {
       )}
     </View>
   ), [searchQuery, activeFilterCount, colors, router]);
+
+  if (!canExpense) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.gateContainer}>
+          <View style={[styles.gateIconWrap, { backgroundColor: colors.warningLight }]}>
+            <DollarSign size={40} color={colors.warning} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.gateTitle, { color: colors.text }]}>Expense Tracking</Text>
+          <Text style={[styles.gateSubtitle, { color: colors.textSecondary }]}>
+            Track repair costs, maintenance expenses, and export reports for tax season. Available on Essential and above.
+          </Text>
+          <TouchableOpacity
+            style={[styles.gateBtn, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/paywall' as never);
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.gateBtnText, { color: colors.textInverse }]}>Upgrade to Essential</Text>
+          </TouchableOpacity>
+          <View style={styles.gateFeatures}>
+            {['Log unlimited expenses', 'Filter by property & category', 'Export CSV for tax season', 'Category breakdown charts'].map((f, i) => (
+              <View key={i} style={styles.gateFeatureRow}>
+                <View style={[styles.gateCheckDot, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.gateFeatureText, { color: colors.textSecondary }]}>{f}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -896,5 +920,60 @@ const styles = StyleSheet.create({
   emptyCtaText: {
     fontSize: 15,
     fontWeight: '600' as const,
+  },
+  gateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 60,
+  },
+  gateIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  gateTitle: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  gateSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  gateBtn: {
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 28,
+  },
+  gateBtnText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  gateFeatures: {
+    alignSelf: 'stretch',
+    gap: 12,
+  },
+  gateFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  gateCheckDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  gateFeatureText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
   },
 });

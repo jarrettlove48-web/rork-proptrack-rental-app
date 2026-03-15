@@ -84,6 +84,9 @@ function RootLayoutNav() {
       <Stack.Screen name="add-expense" options={{ presentation: "modal", title: "Add Expense" }} />
       <Stack.Screen name="invite-tenant" options={{ presentation: "modal", title: "Invite Tenant" }} />
       <Stack.Screen name="paywall" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="reports" options={{ title: "Reports & Analytics" }} />
+      <Stack.Screen name="notification-settings" options={{ title: "Notifications" }} />
+      <Stack.Screen name="bulk-tenants" options={{ title: "Manage Tenants" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut } from 'lucide-react-native';
+import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut, BarChart3, Lock, Users } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -30,17 +30,17 @@ export default function AccountScreen() {
   const [phoneInput, setPhoneInput] = useState(profile.phone);
 
   const handleSaveName = useCallback(() => {
-    updateProfile({ name: nameInput });
+    void updateProfile({ name: nameInput });
     setEditingName(false);
   }, [nameInput, updateProfile]);
 
   const handleSaveEmail = useCallback(() => {
-    updateProfile({ email: emailInput });
+    void updateProfile({ email: emailInput });
     setEditingEmail(false);
   }, [emailInput, updateProfile]);
 
   const handleSavePhone = useCallback(() => {
-    updateProfile({ phone: phoneInput });
+    void updateProfile({ phone: phoneInput });
     setEditingPhone(false);
   }, [phoneInput, updateProfile]);
 
@@ -80,7 +80,7 @@ export default function AccountScreen() {
               <TouchableOpacity
                 style={[styles.addExpenseBtn, { backgroundColor: colors.primaryFaint }]}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   router.push('/add-expense' as never);
                 }}
               >
@@ -204,7 +204,7 @@ export default function AccountScreen() {
                 </View>
               </View>
               <Text style={[styles.planUnits, { color: colors.textSecondary }]}>
-                {isPro ? 'Up to 10 units' : isEssential ? 'Up to 3 units' : '1 unit'}
+                {isPro ? 'Unlimited properties & units' : isEssential ? 'Up to 5 properties · 15 units' : '1 property · 3 units'}
               </Text>
             </View>
           </View>
@@ -212,7 +212,7 @@ export default function AccountScreen() {
             <TouchableOpacity
               style={[styles.upgradeBtn, { backgroundColor: colors.primary }]}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 router.push('/paywall' as never);
               }}
               activeOpacity={0.85}
@@ -225,7 +225,7 @@ export default function AccountScreen() {
             <TouchableOpacity
               style={[styles.managePlanBtn, { backgroundColor: colors.surfaceSecondary }]}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 router.push('/paywall' as never);
               }}
               activeOpacity={0.85}
@@ -243,7 +243,7 @@ export default function AccountScreen() {
           <TouchableOpacity
             style={styles.settingRow}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               toggleTheme();
             }}
           >
@@ -254,7 +254,61 @@ export default function AccountScreen() {
             </View>
           </TouchableOpacity>
           <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
-          <TouchableOpacity style={styles.settingRow}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              if (!isPro) {
+                Alert.alert(
+                  'Pro Feature',
+                  'Reports & Analytics is available on the Pro plan. Upgrade to access detailed insights.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+                  ]
+                );
+                return;
+              }
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/reports' as never);
+            }}
+          >
+            <BarChart3 size={15} color={isPro ? colors.accent : colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.settingText, { color: colors.text }]}>Reports & Analytics</Text>
+            {!isPro && <Lock size={13} color={colors.textTertiary} strokeWidth={2} />}
+            <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
+          </TouchableOpacity>
+          <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              if (!isPro) {
+                Alert.alert(
+                  'Pro Feature',
+                  'Bulk Tenant Management is available on the Pro plan.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+                  ]
+                );
+                return;
+              }
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/bulk-tenants' as never);
+            }}
+          >
+            <Users size={15} color={isPro ? colors.primary : colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.settingText, { color: colors.text }]}>Manage Tenants</Text>
+            {!isPro && <Lock size={13} color={colors.textTertiary} strokeWidth={2} />}
+            <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
+          </TouchableOpacity>
+          <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/notification-settings' as never);
+            }}
+          >
             <Bell size={15} color={colors.textSecondary} strokeWidth={2} />
             <Text style={[styles.settingText, { color: colors.text }]}>Notifications</Text>
             <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
