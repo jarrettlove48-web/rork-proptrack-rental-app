@@ -8,9 +8,11 @@ import {
   Alert,
   Animated,
   Share,
+  Linking,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { X, CheckCircle, Copy, Share2, Clock, Smartphone, MessageCircle, Shield, ArrowRight } from 'lucide-react-native';
+import { X, CheckCircle, Copy, Send, Clock, Smartphone, MessageCircle, Shield, ArrowRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useData } from '@/context/DataContext';
@@ -82,12 +84,33 @@ export default function InviteTenantScreen() {
   }, [inviteLink]);
 
   const handleShare = useCallback(async () => {
-    try {
-      await Share.share({ message: smsMessage, title: 'PropTrack Tenant Invite' });
-    } catch {
-      console.log('Share failed');
+    if (Platform.OS === 'web') {
+      try {
+        await Share.share({ message: smsMessage, title: 'PropTrack Tenant Invite' });
+      } catch {
+        console.log('Share failed');
+      }
+      return;
     }
-  }, [smsMessage]);
+
+    const phone = unit?.tenantPhone?.replace(/[^\d+]/g, '') || '';
+    const body = encodeURIComponent(smsMessage);
+    const smsUrl = Platform.OS === 'ios'
+      ? `sms:${phone}&body=${body}`
+      : `sms:${phone}?body=${body}`;
+
+    try {
+      const supported = await Linking.canOpenURL(smsUrl);
+      if (supported) {
+        await Linking.openURL(smsUrl);
+      } else {
+        await Share.share({ message: smsMessage, title: 'PropTrack Tenant Invite' });
+      }
+    } catch {
+      console.log('SMS open failed, falling back to share');
+      await Share.share({ message: smsMessage, title: 'PropTrack Tenant Invite' });
+    }
+  }, [smsMessage, unit?.tenantPhone]);
 
   const handlePreviewPortal = useCallback(() => {
     if (!unitId) return;
@@ -241,7 +264,7 @@ export default function InviteTenantScreen() {
           activeOpacity={0.8}
           testID="send-invite-btn"
         >
-          <Share2 size={16} color={colors.textInverse} strokeWidth={2} />
+          <Send size={16} color={colors.textInverse} strokeWidth={2} />
           <Text style={[styles.sendBtnText, { color: colors.textInverse }]}>Send Invite to {unit.tenantName}</Text>
         </TouchableOpacity>
       ) : (
@@ -251,8 +274,8 @@ export default function InviteTenantScreen() {
             onPress={handleShare}
             activeOpacity={0.8}
           >
-            <Share2 size={14} color={colors.textInverse} strokeWidth={2} />
-            <Text style={[styles.sentActionBtnText, { color: colors.textInverse }]}>Share</Text>
+            <Send size={14} color={colors.textInverse} strokeWidth={2} />
+            <Text style={[styles.sentActionBtnText, { color: colors.textInverse }]}>Text Invite</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sentActionBtn, { backgroundColor: colors.surfaceTertiary }]}
