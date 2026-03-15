@@ -37,6 +37,7 @@ if (Platform.OS === 'ios' || Platform.OS === 'android') {
 export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
   const queryClient = useQueryClient();
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [devOverride, setDevOverride] = useState<'starter' | 'essential' | 'pro' | null>(null);
 
   const customerInfoQuery = useQuery({
     queryKey: ['rc-customer-info'],
@@ -127,14 +128,18 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
     },
   });
 
-  const isEssential = customerInfo?.entitlements?.active?.['essential']?.isActive === true;
-  const isPro = customerInfo?.entitlements?.active?.['pro']?.isActive === true;
+  const _isEssential = customerInfo?.entitlements?.active?.['essential']?.isActive === true;
+  const _isPro = customerInfo?.entitlements?.active?.['pro']?.isActive === true;
 
-  const currentPlan: 'starter' | 'essential' | 'pro' = isPro
+  const _currentPlan: 'starter' | 'essential' | 'pro' = _isPro
     ? 'pro'
-    : isEssential
+    : _isEssential
     ? 'essential'
     : 'starter';
+
+  const currentPlan = devOverride ?? _currentPlan;
+  const isPro = currentPlan === 'pro';
+  const isEssential = currentPlan === 'essential';
 
   const offerings = offeringsQuery.data ?? null;
   const essentialPackage = offerings?.current?.availablePackages?.find(
@@ -171,5 +176,7 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
     purchaseError: purchaseMutation.error,
     isLoadingOfferings: offeringsQuery.isLoading,
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
+    devOverride,
+    setDevOverride,
   };
 });

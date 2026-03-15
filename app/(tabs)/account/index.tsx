@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSubscription } from '@/context/SubscriptionContext';
+import type { PlanTier } from '@/constants/plans';
 import { useAuth } from '@/context/AuthContext';
 
 export default function AccountScreen() {
@@ -21,7 +22,7 @@ export default function AccountScreen() {
   const { signOut } = useAuth();
   const { profile, updateProfile, properties, units, totalExpenses, expenses } = useData();
   const { isDark, toggleTheme, colors } = useTheme();
-  const { currentPlan, isPro, isEssential } = useSubscription();
+  const { currentPlan, isPro, isEssential, devOverride, setDevOverride } = useSubscription();
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
@@ -344,6 +345,49 @@ export default function AccountScreen() {
         </TouchableOpacity>
       </View>
 
+      {__DEV__ && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.accent }]}>Dev Mode</Text>
+          <View style={[styles.fieldCard, { backgroundColor: colors.surface, borderColor: colors.accent + '40' }]}>
+            <Text style={[styles.devLabel, { color: colors.textSecondary }]}>Simulate Tier</Text>
+            <View style={styles.devTierRow}>
+              {(['starter', 'essential', 'pro'] as PlanTier[]).map((tier) => {
+                const isActive = devOverride === tier || (!devOverride && currentPlan === tier);
+                return (
+                  <TouchableOpacity
+                    key={tier}
+                    style={[
+                      styles.devTierBtn,
+                      { borderColor: isActive ? colors.accent : colors.border },
+                      isActive && { backgroundColor: colors.accent + '18' },
+                    ]}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setDevOverride(devOverride === tier ? null : tier);
+                    }}
+                  >
+                    <Text style={[styles.devTierText, { color: isActive ? colors.accent : colors.textSecondary }]}>
+                      {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {devOverride && (
+              <TouchableOpacity
+                style={[styles.devResetBtn, { backgroundColor: colors.dangerLight }]}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setDevOverride(null);
+                }}
+              >
+                <Text style={[styles.devResetText, { color: colors.danger }]}>Reset to Real Plan</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       <Text style={[styles.versionText, { color: colors.textTertiary }]}>PropTrack v1.0.0</Text>
     </ScrollView>
   );
@@ -616,5 +660,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     paddingBottom: 20,
     marginTop: 8,
+  },
+  devLabel: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  devTierRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  devTierBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  devTierText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  devResetBtn: {
+    alignItems: 'center',
+    marginHorizontal: 14,
+    marginBottom: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  devResetText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
   },
 });
