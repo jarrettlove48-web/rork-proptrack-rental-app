@@ -8,17 +8,20 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Home, User as UserIcon, ChevronRight, Plus, Wrench, Pencil, Trash2, UserPlus, Check, Phone, Mail } from 'lucide-react-native';
+import { Home, User as UserIcon, Plus, Pencil, Trash2, UserPlus, Check, Phone, Mail, Lock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canAddUnit, getUnitLimitMessage } from '@/constants/plans';
 import { Unit } from '@/types';
 
 export default function PropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { properties, getUnitsForProperty, getRequestsForProperty, deleteProperty, deleteUnit, inviteTenant } = useData();
+  const { properties, units, getUnitsForProperty, getRequestsForProperty, deleteProperty, deleteUnit } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
 
   const property = useMemo(() => properties.find(p => p.id === id), [properties, id]);
   const propertyUnits = useMemo(() => getUnitsForProperty(id ?? ''), [getUnitsForProperty, id]);
@@ -35,8 +38,8 @@ export default function PropertyDetailScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            deleteProperty(id ?? '');
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            void deleteProperty(id ?? '');
             router.back();
           },
         },
@@ -54,8 +57,8 @@ export default function PropertyDetailScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            deleteUnit(unitId);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            void deleteUnit(unitId);
           },
         },
       ]
@@ -67,7 +70,7 @@ export default function PropertyDetailScreen() {
       Alert.alert('No Contact Info', 'Add a phone number or email for this tenant first.');
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({ pathname: '/invite-tenant', params: { unitId: unit.id } } as never);
   }, [router]);
 
@@ -202,11 +205,26 @@ export default function PropertyDetailScreen() {
               <TouchableOpacity
                 style={[styles.addUnitBtn, { backgroundColor: colors.primary }]}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  if (!canAddUnit(currentPlan, units.length)) {
+                    Alert.alert(
+                      'Unit Limit Reached',
+                      getUnitLimitMessage(currentPlan),
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+                      ]
+                    );
+                    return;
+                  }
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   router.push({ pathname: '/add-unit', params: { propertyId: id } } as never);
                 }}
               >
-                <Plus size={14} color={colors.textInverse} strokeWidth={2.5} />
+                {!canAddUnit(currentPlan, units.length) ? (
+                  <Lock size={14} color={colors.textInverse} strokeWidth={2.5} />
+                ) : (
+                  <Plus size={14} color={colors.textInverse} strokeWidth={2.5} />
+                )}
                 <Text style={[styles.addUnitBtnText, { color: colors.textInverse }]}>Add</Text>
               </TouchableOpacity>
             </View>

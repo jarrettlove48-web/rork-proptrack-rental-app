@@ -15,12 +15,16 @@ import { X, DollarSign, ChevronDown } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canTrackExpenses } from '@/constants/plans';
 import { EXPENSE_CATEGORIES, Expense } from '@/types';
 
 export default function AddExpenseScreen() {
   const router = useRouter();
   const { properties, units, addExpense } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
+  const canExpense = canTrackExpenses(currentPlan);
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
@@ -44,8 +48,8 @@ export default function AddExpenseScreen() {
       Alert.alert('Invalid Amount', 'Please enter a valid expense amount.');
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addExpense({
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void addExpense({
       propertyId: selectedPropertyId,
       unitId: selectedUnitId || undefined,
       description: description.trim(),
@@ -78,6 +82,23 @@ export default function AddExpenseScreen() {
         }}
       />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {!canExpense ? (
+          <View style={styles.lockedSection}>
+            <View style={[styles.iconWrap, { backgroundColor: colors.warningLight }]}>
+              <DollarSign size={24} color={colors.warning} strokeWidth={2} />
+            </View>
+            <Text style={[styles.heading, { color: colors.text }]}>Expense Tracking</Text>
+            <Text style={[styles.subheading, { color: colors.textSecondary }]}>Expense tracking is available on the Essential plan and above. Upgrade to start logging expenses for tax season.</Text>
+            <TouchableOpacity
+              style={[styles.upgradeBtn, { backgroundColor: colors.primary }]}
+              onPress={() => router.push('/paywall' as never)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.upgradeBtnText, { color: colors.textInverse }]}>Upgrade Now</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
         <View style={[styles.iconWrap, { backgroundColor: colors.accentLight }]}>
           <DollarSign size={24} color={colors.accent} strokeWidth={2} />
         </View>
@@ -215,6 +236,8 @@ export default function AddExpenseScreen() {
           <DollarSign size={16} color={colors.textInverse} strokeWidth={2} />
           <Text style={[styles.submitBtnText, { color: colors.textInverse }]}>Log Expense</Text>
         </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -243,4 +266,7 @@ const styles = StyleSheet.create({
   submitBtn: { flexDirection: 'row', borderRadius: 14, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
   submitBtnDisabled: { opacity: 0.4 },
   submitBtnText: { fontSize: 16, fontWeight: '600' as const },
+  lockedSection: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 20 },
+  upgradeBtn: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, marginTop: 8 },
+  upgradeBtnText: { fontSize: 16, fontWeight: '600' as const },
 });

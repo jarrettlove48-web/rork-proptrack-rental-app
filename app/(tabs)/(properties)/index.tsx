@@ -6,20 +6,25 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, MapPin, ChevronRight, Plus, Wrench, MessageCircle, DollarSign, UserPlus, Activity } from 'lucide-react-native';
+import { Building2, MapPin, ChevronRight, Plus, Wrench, MessageCircle, DollarSign, UserPlus, Activity, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canAddProperty, getPropertyLimitMessage, TIER_LIMITS } from '@/constants/plans';
 import { Property, ActivityItem } from '@/types';
 import { formatDate } from '@/utils/helpers';
 
 export default function PropertiesScreen() {
   const router = useRouter();
-  const { properties, units, requests, openRequestCount, occupiedUnitCount, recentActivities, refetchAll, totalExpenses } = useData();
+  const { properties, units, requests, openRequestCount, occupiedUnitCount, recentActivities, refetchAll } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
   const [refreshing, setRefreshing] = useState(false);
+  const propertyAtLimit = !canAddProperty(currentPlan, properties.length);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -27,10 +32,22 @@ export default function PropertiesScreen() {
     setRefreshing(false);
   }, [refetchAll]);
 
+
   const handleAddProperty = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (propertyAtLimit) {
+      Alert.alert(
+        'Property Limit Reached',
+        getPropertyLimitMessage(currentPlan),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push('/add-property' as never);
-  }, [router]);
+  }, [router, propertyAtLimit, currentPlan]);
 
   const getPropertyStats = useCallback((propertyId: string) => {
     const propertyUnits = units.filter(u => u.propertyId === propertyId);
@@ -64,7 +81,7 @@ export default function PropertiesScreen() {
       <TouchableOpacity
         style={[styles.propertyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           router.push({ pathname: '/(tabs)/(properties)/[id]' as never, params: { id: item.id } });
         }}
         activeOpacity={0.7}
@@ -119,6 +136,25 @@ export default function PropertiesScreen() {
         </TouchableOpacity>
       </View>
 
+      {currentPlan === 'starter' && (
+        <TouchableOpacity
+          style={[styles.upgradeBanner, { backgroundColor: colors.accentLight, borderColor: colors.accent }]}
+          onPress={() => router.push('/paywall' as never)}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.upgradeBannerIcon, { backgroundColor: colors.accent }]}>
+            <Zap size={14} color="#FFFFFF" strokeWidth={2} />
+          </View>
+          <View style={styles.upgradeBannerText}>
+            <Text style={[styles.upgradeBannerTitle, { color: colors.text }]}>Free Plan</Text>
+            <Text style={[styles.upgradeBannerSub, { color: colors.textSecondary }]}>
+              {properties.length}/{TIER_LIMITS.starter.maxProperties} properties · {units.length}/{TIER_LIMITS.starter.maxUnits} units
+            </Text>
+          </View>
+          <Text style={[styles.upgradeBannerCta, { color: colors.accent }]}>Upgrade</Text>
+        </TouchableOpacity>
+      )}
+
       <View style={styles.metricsRow}>
         <View style={[styles.metricCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.metricDot, { backgroundColor: colors.danger }]} />
@@ -170,7 +206,7 @@ export default function PropertiesScreen() {
 
       <Text style={[styles.sectionTitle, { color: colors.text }]}>Properties</Text>
     </View>
-  ), [openRequestCount, occupiedUnitCount, properties.length, router, colors, recentActivities, getActivityIcon, handleAddProperty]);
+  ), [openRequestCount, occupiedUnitCount, properties.length, units.length, router, colors, recentActivities, getActivityIcon, handleAddProperty, currentPlan]);
 
   const renderEmpty = useCallback(() => (
     <View style={styles.emptyState}>
@@ -418,5 +454,36 @@ const styles = StyleSheet.create({
   emptyCtaText: {
     fontSize: 15,
     fontWeight: '600' as const,
+  },
+  upgradeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    gap: 12,
+  },
+  upgradeBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upgradeBannerText: {
+    flex: 1,
+  },
+  upgradeBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  upgradeBannerSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  upgradeBannerCta: {
+    fontSize: 14,
+    fontWeight: '700' as const,
   },
 });

@@ -23,16 +23,16 @@ const PLAN_DATA = [
     tagline: 'Perfect for getting started',
     price: '$9',
     period: '/mo',
-    units: 'Up to 3 units',
+    limits: 'Up to 5 properties & 15 units',
     icon: Building2,
     features: [
-      'Full iOS & Android app',
+      'Up to 5 properties',
+      'Up to 15 units & tenants',
+      'Expense tracker',
       'Push notifications',
       'Photo uploads',
       'Request history',
-      'Expense tracker',
       'Rent reminders (SMS/email)',
-      'Lease document storage',
     ],
   },
   {
@@ -41,11 +41,12 @@ const PLAN_DATA = [
     tagline: 'For growing portfolios',
     price: '$19',
     period: '/mo',
-    units: 'Up to 10 units',
+    limits: 'Unlimited properties & units',
     icon: Crown,
     popular: true,
     features: [
       'Everything in Essential',
+      'Unlimited properties & units',
       'Multi-property dashboard',
       'Annual reports & analytics',
       'Priority support',
@@ -87,7 +88,7 @@ export default function PaywallScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   const handlePurchase = async () => {
     if (!isAvailable) {
@@ -99,7 +100,7 @@ export default function PaywallScreen() {
       Alert.alert('Unavailable', 'This plan is not available right now. Please try again later.');
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     purchasePackage(pkg);
   };
 
@@ -108,7 +109,7 @@ export default function PaywallScreen() {
       Alert.alert('Not Available', 'In-app purchases require a development build. They are not supported in Expo Go.');
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     restorePurchases();
   };
 
@@ -188,7 +189,7 @@ export default function PaywallScreen() {
                     isSelected && { borderColor: colors.primary, borderWidth: 2 },
                   ]}
                   onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setSelectedPlan(plan.id);
                   }}
                   activeOpacity={0.8}
@@ -215,7 +216,7 @@ export default function PaywallScreen() {
                     <Text style={[styles.planOptionPrice, { color: colors.text }]}>{plan.price}</Text>
                     <Text style={[styles.planOptionPeriod, { color: colors.textTertiary }]}>{plan.period}</Text>
                   </View>
-                  <Text style={[styles.planOptionUnits, { color: colors.textSecondary }]}>{plan.units}</Text>
+                  <Text style={[styles.planOptionUnits, { color: colors.textSecondary }]}>{plan.limits}</Text>
                 </TouchableOpacity>
               );
             })}

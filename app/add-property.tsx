@@ -8,33 +8,49 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Building2, MapPin, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canAddProperty, getPropertyLimitMessage } from '@/constants/plans';
 
 export default function AddPropertyScreen() {
   const router = useRouter();
-  const { addProperty } = useData();
+  const { addProperty, properties } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [unitCount, setUnitCount] = useState('');
 
   const isValid = name.trim().length > 0 && address.trim().length > 0;
+  const atLimit = !canAddProperty(currentPlan, properties.length);
 
   const handleSubmit = useCallback(() => {
     if (!isValid) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addProperty({
+    if (atLimit) {
+      Alert.alert(
+        'Property Limit Reached',
+        getPropertyLimitMessage(currentPlan),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void addProperty({
       name: name.trim(),
       address: address.trim(),
       unitCount: parseInt(unitCount, 10) || 0,
     });
     router.back();
-  }, [name, address, unitCount, isValid, addProperty, router]);
+  }, [name, address, unitCount, isValid, addProperty, router, atLimit, currentPlan]);
 
   return (
     <KeyboardAvoidingView

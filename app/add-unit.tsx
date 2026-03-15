@@ -9,18 +9,23 @@ import {
   Platform,
   ScrollView,
   Switch,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { Home, User, Phone, Mail, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { canAddUnit, getUnitLimitMessage } from '@/constants/plans';
 
 export default function AddUnitScreen() {
   const router = useRouter();
   const { propertyId } = useLocalSearchParams<{ propertyId: string }>();
-  const { addUnit } = useData();
+  const { addUnit, units } = useData();
   const { colors } = useTheme();
+  const { currentPlan } = useSubscription();
+  const atLimit = !canAddUnit(currentPlan, units.length);
 
   const [label, setLabel] = useState('');
   const [isOccupied, setIsOccupied] = useState(true);
@@ -32,8 +37,19 @@ export default function AddUnitScreen() {
 
   const handleSubmit = useCallback(() => {
     if (!isValid || !propertyId) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addUnit({
+    if (atLimit) {
+      Alert.alert(
+        'Unit Limit Reached',
+        getUnitLimitMessage(currentPlan),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void addUnit({
       propertyId,
       label: label.trim(),
       tenantName: tenantName.trim(),
@@ -43,7 +59,7 @@ export default function AddUnitScreen() {
       isOccupied,
     });
     router.back();
-  }, [label, tenantName, tenantPhone, tenantEmail, isOccupied, propertyId, isValid, addUnit, router]);
+  }, [label, tenantName, tenantPhone, tenantEmail, isOccupied, propertyId, isValid, addUnit, router, atLimit, currentPlan]);
 
   return (
     <KeyboardAvoidingView
