@@ -61,11 +61,13 @@ export default function AddExpenseScreen() {
       category,
       date: new Date().toISOString(),
       vendor: vendor.trim() || undefined,
+      receiptUri: receiptUri || undefined,
+      isRecurring,
     });
     Alert.alert('Expense Logged', `$${parsedAmount.toFixed(2)} expense has been recorded.`, [
       { text: 'OK', onPress: () => router.back() },
     ]);
-  }, [isValid, category, amount, selectedPropertyId, selectedUnitId, description, vendor, addExpense, router]);
+  }, [isValid, category, amount, selectedPropertyId, selectedUnitId, description, vendor, receiptUri, isRecurring, addExpense, router]);
 
   return (
     <KeyboardAvoidingView

@@ -98,6 +98,8 @@ create table if not exists public.expenses (
   category text not null default 'other' check (category in ('repair', 'maintenance', 'upgrade', 'inspection', 'other')),
   date text not null default '',
   vendor text,
+  receipt_uri text,
+  is_recurring boolean not null default false,
   created_at timestamptz not null default now()
 );
 

@@ -72,6 +72,8 @@ function mapExpense(row: Record<string, unknown>): Expense {
     category: row.category as Expense['category'],
     date: (row.date as string) ?? '',
     vendor: row.vendor as string | undefined,
+    receiptUri: row.receipt_uri as string | undefined,
+    isRecurring: (row.is_recurring as boolean) ?? false,
     createdAt: row.created_at as string,
   };
 }
@@ -560,6 +562,8 @@ export const [DataProvider, useData] = createContextHook(() => {
         category: data.category,
         date: data.date,
         vendor: data.vendor ?? null,
+        receipt_uri: data.receiptUri ?? null,
+        is_recurring: data.isRecurring ?? false,
       })
       .select()
       .single();

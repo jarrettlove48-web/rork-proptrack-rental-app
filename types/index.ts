@@ -59,6 +59,8 @@ export interface Expense {
   category: 'repair' | 'maintenance' | 'upgrade' | 'inspection' | 'other';
   date: string;
   vendor?: string;
+  receiptUri?: string;
+  isRecurring?: boolean;
   createdAt: string;
 }
 
