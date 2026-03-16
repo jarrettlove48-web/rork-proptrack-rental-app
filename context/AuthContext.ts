@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
@@ -15,18 +15,42 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   useEffect(() => {
     console.log('[Auth] Checking initial session...');
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    supabase.auth.getSession().then(({ data: { session: s }, error }) => {
+      if (error) {
+        console.log('[Auth] Session restore error:', error.message);
+        if (
+          error.message.includes('Refresh Token') ||
+          error.message.includes('Invalid Refresh Token') ||
+          error.message.includes('token')
+        ) {
+          console.log('[Auth] Invalid refresh token, signing out to clear stale session');
+          supabase.auth.signOut().catch(() => {});
+          setSession(null);
+          setUser(null);
+          setIsLoading(false);
+          return;
+        }
+      }
       console.log('[Auth] Initial session:', s ? 'found' : 'none');
       setSession(s);
       setUser(s?.user ?? null);
       setIsLoading(false);
     }).catch((err) => {
       console.log('[Auth] Error getting session:', err);
+      setSession(null);
+      setUser(null);
       setIsLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       console.log('[Auth] Auth state changed:', _event, s ? 'session' : 'no session');
+      if (_event === 'TOKEN_REFRESHED' && !s) {
+        console.log('[Auth] Token refresh failed, clearing session');
+        setSession(null);
+        setUser(null);
+        queryClient.clear();
+        return;
+      }
       setSession(s);
       setUser(s?.user ?? null);
       if (_event === 'SIGNED_OUT') {
@@ -99,12 +123,29 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const signOut = useCallback(async () => {
     console.log('[Auth] Signing out...');
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.log('[Auth] Sign out error:', error.message);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.log('[Auth] Sign out error:', error.message);
+        if (
+          error.message.includes('Refresh Token') ||
+          error.message.includes('token')
+        ) {
+          console.log('[Auth] Stale token during sign out, forcing local cleanup');
+          setSession(null);
+          setUser(null);
+          queryClient.clear();
+          return;
+        }
+        Alert.alert('Error', 'Failed to sign out. Please try again.');
+      }
+    } catch (err) {
+      console.log('[Auth] Sign out exception, forcing local cleanup:', err);
+      setSession(null);
+      setUser(null);
+      queryClient.clear();
     }
-  }, []);
+  }, [queryClient]);
 
   const resetPassword = useCallback(async (email: string) => {
     try {
@@ -121,7 +162,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, []);
 
-  return {
+  return useMemo(() => ({
     session,
     user,
     isLoading,
@@ -132,5 +173,5 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     signUp,
     signOut,
     resetPassword,
-  };
+  }), [session, user, isLoading, isSigningIn, isSigningUp, signIn, signUp, signOut, resetPassword]);
 });
