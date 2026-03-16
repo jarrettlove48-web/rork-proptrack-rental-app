@@ -126,37 +126,54 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     void checkRole();
   }, [userId]);
 
+  const checkInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; unitId?: string; label?: string; tenantName?: string }> => {
+    const normalizedCode = code.toUpperCase().trim();
+    console.log('[Tenant] Checking invite code via RPC:', normalizedCode);
+
+    const { data, error } = await supabase.rpc('verify_invite_code', { invite_code_input: normalizedCode });
+
+    if (error) {
+      console.log('[Tenant] RPC error:', error.message);
+      return { valid: false };
+    }
+
+    if (!data) {
+      console.log('[Tenant] No unit found for code:', normalizedCode);
+      return { valid: false };
+    }
+
+    const result = data as Record<string, unknown>;
+    console.log('[Tenant] Code valid, unit:', result.id);
+    return {
+      valid: true,
+      unitId: result.id as string,
+      label: result.label as string,
+      tenantName: result.tenant_name as string,
+    };
+  }, []);
+
   const verifyInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!userId) return false;
     const normalizedCode = code.toUpperCase().trim();
-    console.log('[Tenant] Verifying invite code:', normalizedCode);
+    console.log('[Tenant] Verifying + linking invite code:', normalizedCode);
+
+    const checkResult = await checkInviteCode(normalizedCode);
+    if (!checkResult.valid || !checkResult.unitId) {
+      return false;
+    }
 
     const { error: updateError } = await supabase
       .from('units')
       .update({ tenant_user_id: userId, tenant_portal_active: true })
-      .eq('invite_code', normalizedCode)
-      .eq('is_invited', true);
+      .eq('id', checkResult.unitId);
 
     if (updateError) {
       console.log('[Tenant] Update error:', updateError.message);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Alert.alert('Error', 'Something went wrong linking your account. Please try again.');
       return false;
     }
 
-    const { data, error } = await supabase
-      .from('units')
-      .select('*')
-      .eq('tenant_user_id', userId)
-      .limit(1);
-
-    if (error || !data || data.length === 0) {
-      console.log('[Tenant] Invalid invite code - no unit linked after update');
-      Alert.alert('Invalid Code', 'This invite code is not valid or has expired.');
-      return false;
-    }
-
-    const unitRow = data[0] as Record<string, unknown>;
-    const unitId = unitRow.id as string;
+    const unitId = checkResult.unitId;
     console.log('[Tenant] Valid code, linked to unit:', unitId);
 
     const { error: profileError } = await supabase
@@ -170,7 +187,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     setIsTenantRole(true);
     await AsyncStorage.setItem(TENANT_UNIT_KEY, JSON.stringify(session));
     return true;
-  }, [userId]);
+  }, [userId, checkInviteCode]);
 
   const unitQuery = useQuery({
     queryKey: ['tenant-unit', tenantSession?.unitId],
@@ -407,6 +424,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     openRequests,
     resolvedRequests,
     isLoading,
+    checkInviteCode,
     verifyInviteCode,
     submitRequest,
     sendMessage,
@@ -415,7 +433,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     refetchAll,
   }), [
     isTenantRole, tenantSession, unit, property, requests, messages,
-    openRequests, resolvedRequests, isLoading, verifyInviteCode,
+    openRequests, resolvedRequests, isLoading, checkInviteCode, verifyInviteCode,
     submitRequest, sendMessage, getMessagesForRequest, logout, refetchAll,
   ]);
 });

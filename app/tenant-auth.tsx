@@ -10,22 +10,24 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Building2, Mail, Lock, User, Eye, EyeOff, ArrowRight, KeyRound, ChevronLeft } from 'lucide-react-native';
+import { Building2, Mail, Lock, User, Eye, EyeOff, ArrowRight, KeyRound, ChevronLeft, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { useTheme } from '@/context/ThemeContext';
 
-type TenantAuthMode = 'login' | 'signup' | 'invite';
+type TenantStep = 'code' | 'password';
 
 export default function TenantAuthScreen() {
   const { signIn, signUp, isSigningIn, isSigningUp, isAuthenticated } = useAuth();
-  const { verifyInviteCode } = useTenant();
+  const { checkInviteCode, verifyInviteCode } = useTenant();
   const { colors } = useTheme();
 
-  const [mode, setMode] = useState<TenantAuthMode>(isAuthenticated ? 'invite' : 'login');
+  const [step, setStep] = useState<TenantStep>(isAuthenticated ? 'code' : 'code');
+  const [tenantMode, setTenantMode] = useState<'new' | 'returning'>('new');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -33,85 +35,125 @@ export default function TenantAuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [codeVerified, setCodeVerified] = useState(false);
+  const [verifiedUnitInfo, setVerifiedUnitInfo] = useState<{ label?: string; tenantName?: string } | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const switchMode = useCallback((newMode: TenantAuthMode) => {
+  const animateTransition = useCallback((callback: () => void) => {
     Animated.timing(fadeAnim, {
       toValue: 0,
-      duration: 150,
+      duration: 120,
       useNativeDriver: true,
     }).start(() => {
-      setMode(newMode);
-      setError('');
+      callback();
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 200,
+        duration: 180,
         useNativeDriver: true,
       }).start();
     });
   }, [fadeAnim]);
 
-  const handleAuthSubmit = useCallback(async () => {
+  const handleCodeSubmit = useCallback(async () => {
     setError('');
     if (!email.trim()) {
       setError('Please enter your email');
       return;
     }
-    if (!password.trim()) {
-      setError('Please enter your password');
-      return;
-    }
-
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    if (mode === 'login') {
-      const success = await signIn(email.trim(), password);
-      if (success) {
-        switchMode('invite');
-      } else {
-        setError('Invalid email or password');
-      }
-    } else if (mode === 'signup') {
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters');
-        return;
-      }
-      const success = await signUp(email.trim(), password, name.trim());
-      if (success) {
-        switchMode('invite');
-      }
-    }
-  }, [email, password, name, mode, signIn, signUp, switchMode]);
-
-  const handleVerifyCode = useCallback(async () => {
     const code = inviteCode.trim().toUpperCase();
     if (code.length < 4) {
-      setError('Please enter a valid invite code');
+      setError('Please enter your invite code');
       return;
     }
-    setError('');
+
     setIsVerifying(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const success = await verifyInviteCode(code);
+    const result = await checkInviteCode(code);
     setIsVerifying(false);
-    if (!success) {
+
+    if (!result.valid) {
       setError('Invalid or expired invite code');
+      return;
     }
-  }, [inviteCode, verifyInviteCode]);
+
+    console.log('[TenantAuth] Code verified, unit:', result.label, 'tenant:', result.tenantName);
+    setCodeVerified(true);
+    setVerifiedUnitInfo({ label: result.label, tenantName: result.tenantName });
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    animateTransition(() => {
+      setStep('password');
+    });
+  }, [email, inviteCode, checkInviteCode, animateTransition]);
+
+  const handlePasswordSubmit = useCallback(async () => {
+    setError('');
+    if (!password.trim()) {
+      setError('Please enter a password');
+      return;
+    }
+    if (tenantMode === 'new' && password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setIsVerifying(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    let authSuccess = false;
+    if (tenantMode === 'returning') {
+      authSuccess = await signIn(email.trim(), password);
+      if (!authSuccess) {
+        setIsVerifying(false);
+        setError('Invalid password. Try again or switch to "New here".');
+        return;
+      }
+    } else {
+      authSuccess = await signUp(email.trim(), password, name.trim() || email.trim().split('@')[0]);
+      if (!authSuccess) {
+        setIsVerifying(false);
+        setError('Could not create account. You may already have one \u2014 try "Returning tenant".');
+        return;
+      }
+    }
+
+    const code = inviteCode.trim().toUpperCase();
+    const linkSuccess = await verifyInviteCode(code);
+    setIsVerifying(false);
+
+    if (!linkSuccess) {
+      Alert.alert('Code Error', 'Your account was created but we could not link the invite code. Please try entering the code again from the tenant portal.');
+    }
+  }, [email, password, name, inviteCode, tenantMode, signIn, signUp, verifyInviteCode]);
 
   const isSubmitting = isSigningIn || isSigningUp || isVerifying;
 
-  const renderInviteScreen = () => (
+  const renderCodeScreen = () => (
     <Animated.View style={[styles.formCard, { backgroundColor: colors.surface, opacity: fadeAnim }]}>
       <View style={[styles.inviteIconWrap, { backgroundColor: colors.primaryFaint }]}>
-        <KeyRound size={32} color={colors.primary} strokeWidth={1.6} />
+        <KeyRound size={32} color="#1A6B5C" strokeWidth={1.6} />
       </View>
-      <Text style={[styles.formTitle, { color: colors.text }]}>Enter Invite Code</Text>
+      <Text style={[styles.formTitle, { color: colors.text }]}>Get Started</Text>
       <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
-        Your landlord sent you a 6-character code. Enter it below to access your portal.
+        Enter your email and the invite code your landlord sent you.
       </Text>
+
+      <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
+        <Mail size={18} color={colors.textTertiary} strokeWidth={1.8} />
+        <TextInput
+          style={[styles.input, { color: colors.text }]}
+          placeholder="Email address"
+          placeholderTextColor={colors.textTertiary}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          testID="tenant-email-input"
+        />
+      </View>
 
       <View style={[styles.codeInputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
         <KeyRound size={18} color={colors.textTertiary} strokeWidth={1.8} />
@@ -135,8 +177,8 @@ export default function TenantAuthScreen() {
       )}
 
       <TouchableOpacity
-        style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-        onPress={handleVerifyCode}
+        style={[styles.submitBtn, { backgroundColor: '#1A6B5C' }]}
+        onPress={handleCodeSubmit}
         disabled={isSubmitting}
         activeOpacity={0.85}
         testID="verify-code-btn"
@@ -159,23 +201,58 @@ export default function TenantAuthScreen() {
     </Animated.View>
   );
 
-  const renderAuthScreen = () => (
+  const renderPasswordScreen = () => (
     <Animated.View style={[styles.formCard, { backgroundColor: colors.surface, opacity: fadeAnim }]}>
+      {verifiedUnitInfo && (
+        <View style={[styles.verifiedBanner, { backgroundColor: '#E8F5E9' }]}>
+          <CheckCircle size={16} color="#2E7D32" strokeWidth={2} />
+          <Text style={[styles.verifiedText, { color: '#2E7D32' }]}>
+            Code verified — {verifiedUnitInfo.label}
+          </Text>
+        </View>
+      )}
+
       <Text style={[styles.formTitle, { color: colors.text }]}>
-        {mode === 'login' ? 'Tenant Sign In' : 'Create Account'}
+        {tenantMode === 'new' ? 'Create a Password' : 'Welcome Back'}
       </Text>
       <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
-        {mode === 'login'
-          ? 'Sign in to access your tenant portal'
-          : 'Create an account, then enter your invite code'}
+        {tenantMode === 'new'
+          ? 'Set a password to secure your tenant account.'
+          : 'Enter your password to sign in.'}
       </Text>
 
-      {mode === 'signup' && (
+      <View style={[styles.tenantModeToggle, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.tenantModeOption, tenantMode === 'new' && { backgroundColor: '#1A6B5C' }]}
+          onPress={() => { setTenantMode('new'); setError(''); setPassword(''); }}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tenantModeText, { color: tenantMode === 'new' ? '#FFFFFF' : colors.textSecondary }]}>
+            New here
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tenantModeOption, tenantMode === 'returning' && { backgroundColor: '#1A6B5C' }]}
+          onPress={() => { setTenantMode('returning'); setError(''); setPassword(''); }}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tenantModeText, { color: tenantMode === 'returning' ? '#FFFFFF' : colors.textSecondary }]}>
+            Returning tenant
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.emailDisplay, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+        <Mail size={16} color={colors.textTertiary} strokeWidth={1.8} />
+        <Text style={[styles.emailDisplayText, { color: colors.textSecondary }]} numberOfLines={1}>{email}</Text>
+      </View>
+
+      {tenantMode === 'new' && (
         <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
           <User size={18} color={colors.textTertiary} strokeWidth={1.8} />
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="Full name"
+            placeholder="Full name (optional)"
             placeholderTextColor={colors.textTertiary}
             value={name}
             onChangeText={setName}
@@ -186,25 +263,10 @@ export default function TenantAuthScreen() {
       )}
 
       <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
-        <Mail size={18} color={colors.textTertiary} strokeWidth={1.8} />
-        <TextInput
-          style={[styles.input, { color: colors.text }]}
-          placeholder="Email address"
-          placeholderTextColor={colors.textTertiary}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          testID="tenant-email-input"
-        />
-      </View>
-
-      <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}>
         <Lock size={18} color={colors.textTertiary} strokeWidth={1.8} />
         <TextInput
           style={[styles.input, { color: colors.text }]}
-          placeholder="Password"
+          placeholder={tenantMode === 'new' ? 'Create a password' : 'Enter your password'}
           placeholderTextColor={colors.textTertiary}
           value={password}
           onChangeText={setPassword}
@@ -223,6 +285,10 @@ export default function TenantAuthScreen() {
         </TouchableOpacity>
       </View>
 
+      {tenantMode === 'new' && (
+        <Text style={[styles.passwordHint, { color: colors.textTertiary }]}>Minimum 6 characters</Text>
+      )}
+
       {!!error && (
         <View style={[styles.errorBox, { backgroundColor: colors.dangerLight }]}>
           <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
@@ -230,8 +296,8 @@ export default function TenantAuthScreen() {
       )}
 
       <TouchableOpacity
-        style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-        onPress={handleAuthSubmit}
+        style={[styles.submitBtn, { backgroundColor: '#1A6B5C' }]}
+        onPress={handlePasswordSubmit}
         disabled={isSubmitting}
         activeOpacity={0.85}
         testID="tenant-auth-submit-btn"
@@ -241,7 +307,7 @@ export default function TenantAuthScreen() {
         ) : (
           <>
             <Text style={styles.submitText}>
-              {mode === 'login' ? 'Sign In' : 'Create Account'}
+              {tenantMode === 'new' ? 'Create Account & Enter' : 'Sign In & Enter'}
             </Text>
             <ArrowRight size={18} color="#FFFFFF" strokeWidth={2} />
           </>
@@ -249,26 +315,12 @@ export default function TenantAuthScreen() {
       </TouchableOpacity>
 
       <View style={styles.switchRow}>
-        <TouchableOpacity onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
+        <TouchableOpacity onPress={() => animateTransition(() => { setStep('code'); setError(''); setCodeVerified(false); })}>
           <Text style={[styles.switchText, { color: colors.textSecondary }]}>
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-            <Text style={{ color: colors.primary, fontWeight: '600' as const }}>
-              {mode === 'login' ? 'Sign Up' : 'Sign In'}
-            </Text>
+            Back to <Text style={{ color: '#1A6B5C', fontWeight: '600' as const }}>Invite Code</Text>
           </Text>
         </TouchableOpacity>
       </View>
-
-      {mode === 'login' && (
-        <TouchableOpacity
-          style={[styles.haveCodeBtn, { borderColor: colors.border }]}
-          onPress={() => switchMode('invite')}
-          activeOpacity={0.7}
-        >
-          <KeyRound size={14} color={colors.primary} strokeWidth={2} />
-          <Text style={[styles.haveCodeText, { color: colors.primary }]}>I already have an account & invite code</Text>
-        </TouchableOpacity>
-      )}
     </Animated.View>
   );
 
@@ -284,10 +336,10 @@ export default function TenantAuthScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {mode === 'invite' && !isAuthenticated && (
-              <TouchableOpacity style={styles.backBtn} onPress={() => switchMode('login')}>
+            {step === 'password' && (
+              <TouchableOpacity style={styles.backBtn} onPress={() => animateTransition(() => { setStep('code'); setError(''); })}>
                 <ChevronLeft size={20} color="#FFFFFF" strokeWidth={2} />
-                <Text style={styles.backBtnText}>Back to Sign In</Text>
+                <Text style={styles.backBtnText}>Back</Text>
               </TouchableOpacity>
             )}
 
@@ -296,12 +348,10 @@ export default function TenantAuthScreen() {
                 <Building2 size={32} color="#FFFFFF" strokeWidth={1.6} />
               </View>
               <Text style={styles.brandTitle}>PropTrack</Text>
-              <View style={[styles.roleBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <Text style={styles.roleBadgeText}>Tenant Portal</Text>
-              </View>
+              <Text style={styles.brandSubtitle}>Your rental portal</Text>
             </View>
 
-            {(mode === 'invite' || isAuthenticated) ? renderInviteScreen() : renderAuthScreen()}
+            {step === 'password' && codeVerified ? renderPasswordScreen() : renderCodeScreen()}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -354,17 +404,11 @@ const styles = StyleSheet.create({
     fontWeight: '800' as const,
     color: '#FFFFFF',
     letterSpacing: -0.5,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  roleBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  roleBadgeText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
+  brandSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
   },
   formCard: {
     borderRadius: 24,
@@ -397,6 +441,22 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 12,
+    marginBottom: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+  },
   codeInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -415,21 +475,56 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 0,
   },
-  inputWrap: {
+  verifiedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  verifiedText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    flex: 1,
+  },
+  tenantModeToggle: {
+    flexDirection: 'row',
+    borderRadius: 12,
     borderWidth: 1,
-    borderRadius: 14,
+    padding: 3,
+    marginBottom: 16,
+  },
+  tenantModeOption: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tenantModeText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  emailDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
     marginBottom: 12,
   },
-  input: {
+  emailDisplayText: {
+    fontSize: 14,
     flex: 1,
-    fontSize: 15,
-    paddingVertical: 2,
-    paddingHorizontal: 0,
+  },
+  passwordHint: {
+    fontSize: 12,
+    marginTop: -6,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   errorBox: {
     padding: 12,
@@ -461,20 +556,6 @@ const styles = StyleSheet.create({
   },
   switchText: {
     fontSize: 14,
-  },
-  haveCodeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  haveCodeText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
   },
   helpSection: {
     marginTop: 20,
