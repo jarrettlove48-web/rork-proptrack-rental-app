@@ -74,7 +74,7 @@ export default function TenantAuthScreen() {
     setIsVerifying(false);
 
     if (!result.valid) {
-      setError('Invalid or expired invite code');
+      setError(result.errorDetail || 'Invalid or expired invite code');
       return;
     }
 

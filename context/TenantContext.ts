@@ -126,31 +126,76 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     void checkRole();
   }, [userId]);
 
-  const checkInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; unitId?: string; label?: string; tenantName?: string }> => {
-    const normalizedCode = code.toUpperCase().trim();
-    console.log('[Tenant] Checking invite code via RPC:', normalizedCode);
+  const checkInviteCodeFallback = useCallback(async (normalizedCode: string): Promise<{ valid: boolean; unitId?: string; label?: string; tenantName?: string; errorDetail?: string }> => {
+    console.log('[Tenant] Fallback: direct query for invite_code:', normalizedCode);
+    try {
+      const { data, error } = await supabase
+        .from('units')
+        .select('id, property_id, label, tenant_name, is_invited, invite_code')
+        .eq('invite_code', normalizedCode)
+        .eq('is_invited', true)
+        .limit(1)
+        .maybeSingle();
 
-    const { data, error } = await supabase.rpc('verify_invite_code', { invite_code_input: normalizedCode });
+      if (error) {
+        console.log('[Tenant] Fallback query error:', error.message, error.code);
+        return { valid: false, errorDetail: 'Could not verify code. Please try again.' };
+      }
 
-    if (error) {
-      console.log('[Tenant] RPC error:', error.message);
-      return { valid: false };
+      if (!data) {
+        console.log('[Tenant] Fallback: no unit found for code:', normalizedCode);
+        return { valid: false, errorDetail: 'Invalid or expired invite code' };
+      }
+
+      const row = data as Record<string, unknown>;
+      console.log('[Tenant] Fallback: found unit:', row.id, 'label:', row.label);
+      return {
+        valid: true,
+        unitId: row.id as string,
+        label: row.label as string,
+        tenantName: row.tenant_name as string,
+      };
+    } catch (e) {
+      console.log('[Tenant] Fallback exception:', e);
+      return { valid: false, errorDetail: 'Something went wrong. Please try again.' };
     }
-
-    if (!data) {
-      console.log('[Tenant] No unit found for code:', normalizedCode);
-      return { valid: false };
-    }
-
-    const result = data as Record<string, unknown>;
-    console.log('[Tenant] Code valid, unit:', result.id);
-    return {
-      valid: true,
-      unitId: result.id as string,
-      label: result.label as string,
-      tenantName: result.tenant_name as string,
-    };
   }, []);
+
+  const checkInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; unitId?: string; label?: string; tenantName?: string; errorDetail?: string }> => {
+    const normalizedCode = code.toUpperCase().trim().replace(/\s+/g, '');
+    console.log('[Tenant] Checking invite code via RPC:', normalizedCode, 'length:', normalizedCode.length);
+
+    try {
+      const { data, error } = await supabase.rpc('verify_invite_code', { invite_code_input: normalizedCode });
+
+      if (error) {
+        console.log('[Tenant] RPC error:', error.message, error.code, error.details);
+
+        if (error.message?.includes('function') || error.code === '42883') {
+          console.log('[Tenant] RPC function not found, trying direct query fallback...');
+          return await checkInviteCodeFallback(normalizedCode);
+        }
+        return { valid: false, errorDetail: 'Server error verifying code. Please try again.' };
+      }
+
+      if (!data) {
+        console.log('[Tenant] No unit found for code:', normalizedCode);
+        return { valid: false, errorDetail: 'No matching invite code found. Please check the code and try again.' };
+      }
+
+      const result = data as Record<string, unknown>;
+      console.log('[Tenant] Code valid, unit:', result.id, 'label:', result.label);
+      return {
+        valid: true,
+        unitId: result.id as string,
+        label: result.label as string,
+        tenantName: result.tenant_name as string,
+      };
+    } catch (e) {
+      console.log('[Tenant] checkInviteCode exception:', e);
+      return await checkInviteCodeFallback(normalizedCode);
+    }
+  }, [checkInviteCodeFallback]);
 
   const verifyInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!userId) return false;
