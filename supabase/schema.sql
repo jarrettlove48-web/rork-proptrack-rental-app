@@ -296,3 +296,32 @@ create index if not exists idx_expenses_property on public.expenses(property_id)
 create index if not exists idx_expenses_owner on public.expenses(owner_id);
 create index if not exists idx_activities_owner on public.activities(owner_id);
 create index if not exists idx_units_invite_code on public.units(invite_code);
+create index if not exists idx_units_tenant_user on public.units(tenant_user_id);
+
+-- ============================================
+-- RPC: Verify invite code (bypasses RLS for lookup)
+-- ============================================
+create or replace function public.verify_invite_code(invite_code_input text)
+returns json as $
+declare
+  found_unit record;
+begin
+  select id, property_id, label, tenant_name
+  into found_unit
+  from public.units
+  where invite_code = upper(trim(invite_code_input))
+  and is_invited = true
+  limit 1;
+
+  if found_unit.id is null then
+    return null;
+  end if;
+
+  return json_build_object(
+    'id', found_unit.id,
+    'property_id', found_unit.property_id,
+    'label', found_unit.label,
+    'tenant_name', found_unit.tenant_name
+  );
+end;
+$ language plpgsql security definer;

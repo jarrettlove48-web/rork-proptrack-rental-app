@@ -428,7 +428,8 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 15,
-    padding: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
   },
   errorBox: {
     padding: 12,

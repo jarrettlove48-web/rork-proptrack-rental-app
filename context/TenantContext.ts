@@ -128,32 +128,36 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
 
   const verifyInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!userId) return false;
-    console.log('[Tenant] Verifying invite code:', code);
+    const normalizedCode = code.toUpperCase().trim();
+    console.log('[Tenant] Verifying invite code:', normalizedCode);
+
+    const { error: updateError } = await supabase
+      .from('units')
+      .update({ tenant_user_id: userId, tenant_portal_active: true })
+      .eq('invite_code', normalizedCode)
+      .eq('is_invited', true);
+
+    if (updateError) {
+      console.log('[Tenant] Update error:', updateError.message);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+      return false;
+    }
+
     const { data, error } = await supabase
       .from('units')
       .select('*')
-      .eq('invite_code', code.toUpperCase().trim())
-      .eq('is_invited', true)
+      .eq('tenant_user_id', userId)
       .limit(1);
 
     if (error || !data || data.length === 0) {
-      console.log('[Tenant] Invalid invite code');
+      console.log('[Tenant] Invalid invite code - no unit linked after update');
       Alert.alert('Invalid Code', 'This invite code is not valid or has expired.');
       return false;
     }
 
     const unitRow = data[0] as Record<string, unknown>;
     const unitId = unitRow.id as string;
-    console.log('[Tenant] Valid code, unit:', unitId);
-
-    const { error: updateError } = await supabase
-      .from('units')
-      .update({ tenant_user_id: userId, tenant_portal_active: true })
-      .eq('id', unitId);
-
-    if (updateError) {
-      console.log('[Tenant] Failed to link unit:', updateError.message);
-    }
+    console.log('[Tenant] Valid code, linked to unit:', unitId);
 
     const { error: profileError } = await supabase
       .from('profiles')
@@ -161,7 +165,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
       .eq('id', userId);
     if (profileError) console.log('[Tenant] Profile update error:', profileError.message);
 
-    const session: TenantSession = { unitId, inviteCode: code.toUpperCase().trim() };
+    const session: TenantSession = { unitId, inviteCode: normalizedCode };
     setTenantSession(session);
     setIsTenantRole(true);
     await AsyncStorage.setItem(TENANT_UNIT_KEY, JSON.stringify(session));
