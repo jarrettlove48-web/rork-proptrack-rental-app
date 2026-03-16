@@ -7,9 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Linking,
+  ActivityIndicator,
 } from 'react-native';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut, BarChart3, Lock, Users } from 'lucide-react-native';
+import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut, BarChart3, Lock, Users, CreditCard } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -23,6 +26,7 @@ export default function AccountScreen() {
   const { profile, updateProfile, properties, units, totalExpenses, expenses } = useData();
   const { isDark, toggleTheme, colors } = useTheme();
   const { currentPlan, isPro, isEssential, devOverride, setDevOverride } = useSubscription();
+  const { user } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingPhone, setEditingPhone] = useState(false);
@@ -44,6 +48,32 @@ export default function AccountScreen() {
     void updateProfile({ phone: phoneInput });
     setEditingPhone(false);
   }, [phoneInput, updateProfile]);
+
+  const billingPortalMutation = useMutation({
+    mutationFn: async () => {
+      console.log('[Account] Fetching billing portal URL...');
+      const res = await fetch('https://proptrack.app/api/billing-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supabaseUserId: user?.id }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `Failed to load billing portal (${res.status})`);
+      }
+      const data = await res.json();
+      if (!data.url) throw new Error('No billing URL returned');
+      return data.url as string;
+    },
+    onSuccess: (url) => {
+      console.log('[Account] Opening billing portal:', url);
+      void Linking.openURL(url);
+    },
+    onError: (error: Error) => {
+      console.log('[Account] Billing portal error:', error.message);
+      Alert.alert('Error', error.message);
+    },
+  });
 
   const planLabel = isPro ? 'Pro' : isEssential ? 'Essential' : 'Starter';
   const planColor = isPro ? '#D4883A' : isEssential ? colors.primary : colors.textTertiary;
@@ -233,6 +263,28 @@ export default function AccountScreen() {
             >
               <Text style={[styles.managePlanText, { color: colors.textSecondary }]}>Manage Subscription</Text>
               <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
+            </TouchableOpacity>
+          )}
+          {(isPro || isEssential) && (
+            <TouchableOpacity
+              style={[styles.billingBtn, { backgroundColor: colors.primaryFaint }]}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                billingPortalMutation.mutate();
+              }}
+              activeOpacity={0.85}
+              disabled={billingPortalMutation.isPending}
+              testID="manage-billing-btn"
+            >
+              {billingPortalMutation.isPending ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <CreditCard size={15} color={colors.primary} strokeWidth={2} />
+                  <Text style={[styles.billingBtnText, { color: colors.primary }]}>Manage Billing</Text>
+                  <ArrowUpRight size={14} color={colors.primary} strokeWidth={2} />
+                </>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -618,6 +670,20 @@ const styles = StyleSheet.create({
   managePlanText: {
     fontSize: 13,
     fontWeight: '500' as const,
+  },
+  billingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 8,
+    gap: 6,
+    minHeight: 40,
+  },
+  billingBtnText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
   },
   settingRow: {
     flexDirection: 'row',
