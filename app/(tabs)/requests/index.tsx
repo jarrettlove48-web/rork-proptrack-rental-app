@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Search, X, Plus, AlertCircle, Clock, CheckCircle } from 'lucide-react-native';
+import { Search, X, Plus, AlertCircle, Clock, CheckCircle, CalendarDays } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -80,7 +80,7 @@ export default function RequestsScreen() {
       <TouchableOpacity
         style={[styles.requestCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           router.push({ pathname: '/request-detail', params: { id: item.id } } as never);
         }}
         activeOpacity={0.7}
@@ -149,9 +149,19 @@ export default function RequestsScreen() {
                   {showSearch ? <X size={16} color={colors.textSecondary} strokeWidth={2} /> : <Search size={16} color={colors.textSecondary} strokeWidth={2} />}
                 </TouchableOpacity>
                 <TouchableOpacity
+                  style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push('/calendar' as never);
+                  }}
+                  testID="calendar-btn"
+                >
+                  <CalendarDays size={16} color={colors.textSecondary} strokeWidth={2} />
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[styles.newRequestBtn, { backgroundColor: colors.primary }]}
                   onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     router.push('/submit-request' as never);
                   }}
                   testID="new-request-btn"
@@ -189,7 +199,7 @@ export default function RequestsScreen() {
                     activeFilter === filter.key && { backgroundColor: colors.text },
                   ]}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    void Haptics.selectionAsync();
                     setActiveFilter(filter.key);
                   }}
                 >
