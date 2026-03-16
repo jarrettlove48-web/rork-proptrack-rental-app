@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
+import { useAuth } from '@/context/AuthContext';
 
 type PurchasesPackage = any;
 type CustomerInfo = any;
@@ -36,8 +37,26 @@ if (Platform.OS === 'ios' || Platform.OS === 'android') {
 
 export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [devOverride, setDevOverride] = useState<'starter' | 'essential' | 'pro' | null>(null);
+  const loggedInUserRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!Purchases || !user?.id) return;
+    if (loggedInUserRef.current === user.id) return;
+    console.log('[RevenueCat] Logging in user:', user.id);
+    Purchases.logIn(user.id)
+      .then((result: { customerInfo: CustomerInfo }) => {
+        console.log('[RevenueCat] User logged in successfully');
+        loggedInUserRef.current = user.id;
+        setCustomerInfo(result.customerInfo);
+        queryClient.setQueryData(['rc-customer-info'], result.customerInfo);
+      })
+      .catch((err: unknown) => {
+        console.log('[RevenueCat] Login failed:', err);
+      });
+  }, [user?.id, queryClient]);
 
   const customerInfoQuery = useQuery({
     queryKey: ['rc-customer-info'],
