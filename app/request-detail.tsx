@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, User } from 'lucide-react-native';
+import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, Calendar, ChevronDown, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
@@ -22,9 +22,11 @@ import { formatDate, formatFullDate, getStatusColor, getCategoryColor, getNextSt
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { requests, updateRequestStatus, getMessagesForRequest, addMessage, profile } = useData();
+  const { requests, updateRequestStatus, updateRequestDates, getMessagesForRequest, addMessage, profile } = useData();
   const { colors } = useTheme();
   const [messageText, setMessageText] = useState('');
+  const [showServiceDatePicker, setShowServiceDatePicker] = useState(false);
+  const [showRequestedDatePicker, setShowRequestedDatePicker] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const request = useMemo(() => requests.find(r => r.id === id), [requests, id]);
@@ -50,18 +52,42 @@ export default function RequestDetailScreen() {
         {
           text: nextStatusLabel ?? 'Update',
           onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            updateRequestStatus(request.id, nextStatus);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            void updateRequestStatus(request.id, nextStatus);
           },
         },
       ]
     );
   }, [request, nextStatus, nextStatusLabel, updateRequestStatus]);
 
+  const handleDateUpdate = useCallback((field: 'serviceDate' | 'requestedDate', dateStr: string | null) => {
+    if (!request) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void updateRequestDates(request.id, { [field]: dateStr });
+    if (field === 'serviceDate') setShowServiceDatePicker(false);
+    if (field === 'requestedDate') setShowRequestedDatePicker(false);
+  }, [request, updateRequestDates]);
+
+  const generateDateOptions = useCallback(() => {
+    const dates: { value: string; label: string }[] = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      dates.push({ value: val, label });
+    }
+    return dates;
+  }, []);
+
+  const dateOptions = useMemo(() => generateDateOptions(), [generateDateOptions]);
+
+  const isEditable = request?.status !== 'resolved';
+
   const handleSendMessage = useCallback(() => {
     if (!messageText.trim() || !id) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    addMessage({
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void addMessage({
       requestId: id,
       senderId: 'landlord',
       senderName: profile.name || 'Landlord',
@@ -133,6 +159,114 @@ export default function RequestDetailScreen() {
             <View style={styles.metaItem}>
               <Text style={[styles.metaLabel, { color: colors.textTertiary }]}>Updated</Text>
               <Text style={[styles.metaValue, { color: colors.text }]}>{formatDate(request.updatedAt)}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.datesSection, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={styles.dateField}>
+              <View style={styles.dateFieldHeader}>
+                <Calendar size={14} color={colors.primary} strokeWidth={2} />
+                <Text style={[styles.dateFieldLabel, { color: colors.textSecondary }]}>Requested Date</Text>
+              </View>
+              {isEditable ? (
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => {
+                    setShowRequestedDatePicker(!showRequestedDatePicker);
+                    setShowServiceDatePicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.datePickerBtnText, { color: request.requestedDate ? colors.text : colors.textTertiary }]}>
+                    {request.requestedDate
+                      ? new Date(request.requestedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Set date'}
+                  </Text>
+                  <View style={styles.datePickerActions}>
+                    {request.requestedDate ? (
+                      <TouchableOpacity onPress={() => handleDateUpdate('requestedDate', null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <X size={14} color={colors.textTertiary} strokeWidth={2} />
+                      </TouchableOpacity>
+                    ) : null}
+                    <ChevronDown size={14} color={colors.textTertiary} strokeWidth={2} />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.dateReadOnly, { color: colors.text }]}>
+                  {request.requestedDate
+                    ? new Date(request.requestedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Not set'}
+                </Text>
+              )}
+              {showRequestedDatePicker && (
+                <ScrollView style={[styles.dateDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+                  {dateOptions.map(opt => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.dateOption, { borderBottomColor: colors.divider }, request.requestedDate === opt.value && { backgroundColor: colors.primaryFaint }]}
+                      onPress={() => handleDateUpdate('requestedDate', opt.value)}
+                    >
+                      <Text style={[styles.dateOptionText, { color: colors.text }, request.requestedDate === opt.value && { color: colors.primary, fontWeight: '600' as const }]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <View style={[styles.dateDivider, { backgroundColor: colors.border }]} />
+
+            <View style={styles.dateField}>
+              <View style={styles.dateFieldHeader}>
+                <CheckCircle size={14} color={colors.accent ?? colors.statusResolved} strokeWidth={2} />
+                <Text style={[styles.dateFieldLabel, { color: colors.textSecondary }]}>Service Date</Text>
+              </View>
+              {isEditable ? (
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => {
+                    setShowServiceDatePicker(!showServiceDatePicker);
+                    setShowRequestedDatePicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.datePickerBtnText, { color: request.serviceDate ? colors.text : colors.textTertiary }]}>
+                    {request.serviceDate
+                      ? new Date(request.serviceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Set date'}
+                  </Text>
+                  <View style={styles.datePickerActions}>
+                    {request.serviceDate ? (
+                      <TouchableOpacity onPress={() => handleDateUpdate('serviceDate', null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <X size={14} color={colors.textTertiary} strokeWidth={2} />
+                      </TouchableOpacity>
+                    ) : null}
+                    <ChevronDown size={14} color={colors.textTertiary} strokeWidth={2} />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.dateReadOnly, { color: colors.text }]}>
+                  {request.serviceDate
+                    ? new Date(request.serviceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Not set'}
+                </Text>
+              )}
+              {showServiceDatePicker && (
+                <ScrollView style={[styles.dateDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+                  {dateOptions.map(opt => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.dateOption, { borderBottomColor: colors.divider }, request.serviceDate === opt.value && { backgroundColor: colors.primaryFaint }]}
+                      onPress={() => handleDateUpdate('serviceDate', opt.value)}
+                    >
+                      <Text style={[styles.dateOptionText, { color: colors.text }, request.serviceDate === opt.value && { color: colors.primary, fontWeight: '600' as const }]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
           {request.tenantName ? (
@@ -324,7 +458,9 @@ const styles = StyleSheet.create({
     gap: 20,
     marginBottom: 14,
   },
-  metaItem: {},
+  metaItem: {
+    flex: 1,
+  },
   metaLabel: {
     fontSize: 11,
     fontWeight: '600' as const,
@@ -388,6 +524,69 @@ const styles = StyleSheet.create({
   logExpenseBtnText: {
     fontSize: 14,
     fontWeight: '600' as const,
+  },
+  datesSection: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  dateField: {
+    marginBottom: 0,
+  },
+  dateFieldHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  dateFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  datePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  datePickerBtnText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+  },
+  datePickerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateReadOnly: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    paddingVertical: 2,
+  },
+  dateDropdown: {
+    maxHeight: 200,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  dateOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 0.5,
+  },
+  dateOptionText: {
+    fontSize: 14,
+  },
+  dateDivider: {
+    height: 1,
+    marginVertical: 12,
   },
   statusTimeline: {
     margin: 20,

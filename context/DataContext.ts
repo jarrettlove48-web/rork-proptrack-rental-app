@@ -46,6 +46,8 @@ function mapRequest(row: Record<string, unknown>): MaintenanceRequest {
     tenantName: (row.tenant_name as string) ?? '',
     unitLabel: (row.unit_label as string) ?? '',
     propertyName: (row.property_name as string) ?? '',
+    serviceDate: row.service_date as string | undefined,
+    requestedDate: row.requested_date as string | undefined,
   };
 }
 
@@ -482,6 +484,8 @@ export const [DataProvider, useData] = createContextHook(() => {
         tenant_name: data.tenantName,
         unit_label: data.unitLabel,
         property_name: data.propertyName,
+        service_date: data.serviceDate ?? null,
+        requested_date: data.requestedDate ?? null,
       })
       .select()
       .single();
@@ -517,6 +521,20 @@ export const [DataProvider, useData] = createContextHook(() => {
       relatedId: id,
     });
   }, [userId, requests, queryClient, addActivityRecord]);
+
+  const updateRequestDates = useCallback(async (id: string, dates: { serviceDate?: string | null; requestedDate?: string | null }) => {
+    if (!userId) return;
+    console.log('[Data] Updating request dates:', id, dates);
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (dates.serviceDate !== undefined) updateData.service_date = dates.serviceDate;
+    if (dates.requestedDate !== undefined) updateData.requested_date = dates.requestedDate;
+    const { error } = await supabase
+      .from('maintenance_requests')
+      .update(updateData)
+      .eq('id', id);
+    if (error) console.log('[Data] Update request dates error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+  }, [userId, queryClient]);
 
   const addMessage = useCallback(async (data: Omit<Message, 'id' | 'timestamp'>) => {
     if (!userId) return null;
@@ -676,6 +694,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     inviteTenant,
     addRequest,
     updateRequestStatus,
+    updateRequestDates,
     addMessage,
     addExpense,
     deleteExpense,
@@ -693,7 +712,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     properties, units, requests, messages, expenses, activities, recentActivities,
     profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
-    addMessage, addExpense, deleteExpense, updateProfile, getUnitsForProperty,
+    updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile, getUnitsForProperty,
     getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,

@@ -67,6 +67,8 @@ create table if not exists public.maintenance_requests (
   tenant_name text not null default '',
   unit_label text not null default '',
   property_name text not null default '',
+  service_date text,
+  requested_date text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

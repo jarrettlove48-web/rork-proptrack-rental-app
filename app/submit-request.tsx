@@ -29,8 +29,10 @@ export default function SubmitRequestScreen() {
   const [selectedCategory, setSelectedCategory] = useState<RequestCategory | null>(null);
   const [description, setDescription] = useState('');
   const [photoUri, setPhotoUri] = useState<string | undefined>();
+  const [requestedDate, setRequestedDate] = useState<string>('');
   const [showPropertyPicker, setShowPropertyPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const availableUnits = useMemo(() => {
     return units.filter(u => u.propertyId === selectedPropertyId);
@@ -58,8 +60,8 @@ export default function SubmitRequestScreen() {
 
   const handleSubmit = useCallback(() => {
     if (!isValid || !selectedCategory) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addRequest({
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void addRequest({
       unitId: selectedUnitId,
       propertyId: selectedPropertyId,
       category: selectedCategory,
@@ -69,11 +71,12 @@ export default function SubmitRequestScreen() {
       tenantName: selectedUnit?.tenantName ?? '',
       unitLabel: selectedUnit?.label ?? '',
       propertyName: selectedProperty?.name ?? '',
+      requestedDate: requestedDate || undefined,
     });
     Alert.alert('Request Submitted', 'Your maintenance request has been submitted successfully.', [
       { text: 'OK', onPress: () => router.back() },
     ]);
-  }, [isValid, selectedCategory, selectedPropertyId, selectedUnitId, description, photoUri, selectedUnit, selectedProperty, addRequest, router]);
+  }, [isValid, selectedCategory, selectedPropertyId, selectedUnitId, description, photoUri, requestedDate, selectedUnit, selectedProperty, addRequest, router]);
 
   return (
     <KeyboardAvoidingView
@@ -183,7 +186,7 @@ export default function SubmitRequestScreen() {
                     isActive && { backgroundColor: catColor + '12' },
                   ]}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    void Haptics.selectionAsync();
                     setSelectedCategory(cat.key);
                   }}
                 >
@@ -210,6 +213,44 @@ export default function SubmitRequestScreen() {
             textAlignVertical="top"
             testID="request-description-input"
           />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Requested Service Date (optional)</Text>
+          <TouchableOpacity
+            style={[styles.pickerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => setShowDatePicker(!showDatePicker)}
+          >
+            <Text style={[styles.pickerBtnText, { color: colors.text }, !requestedDate && { color: colors.textTertiary }]}>
+              {requestedDate ? new Date(requestedDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Select a preferred date'}
+            </Text>
+            <ChevronDown size={16} color={colors.textTertiary} strokeWidth={2} />
+          </TouchableOpacity>
+          {showDatePicker && (
+            <View style={[styles.pickerDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {Array.from({ length: 14 }).map((_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() + i + 1);
+                const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const isSelected = requestedDate === dateStr;
+                return (
+                  <TouchableOpacity
+                    key={dateStr}
+                    style={[styles.pickerOption, { borderBottomColor: colors.divider }, isSelected && { backgroundColor: colors.primaryFaint }]}
+                    onPress={() => {
+                      setRequestedDate(dateStr);
+                      setShowDatePicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerOptionText, { color: colors.text }, isSelected && { color: colors.primary, fontWeight: '600' as const }]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <View style={styles.fieldGroup}>

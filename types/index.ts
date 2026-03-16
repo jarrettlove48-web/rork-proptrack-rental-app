@@ -37,6 +37,8 @@ export interface MaintenanceRequest {
   tenantName: string;
   unitLabel: string;
   propertyName: string;
+  serviceDate?: string;
+  requestedDate?: string;
 }
 
 export interface Message {

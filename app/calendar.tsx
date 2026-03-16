@@ -9,6 +9,7 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
@@ -61,40 +62,58 @@ interface CalendarEvent {
   propertyName: string;
   unitLabel: string;
   tenantName: string;
-  type: 'request';
+  type: 'request_created' | 'service_date' | 'requested_date';
   request: MaintenanceRequest;
+}
+
+function buildGoogleCalUrl(event: CalendarEvent): string {
+  const startDate = new Date(event.date);
+  startDate.setHours(9, 0, 0, 0);
+  const endDate = new Date(startDate);
+  endDate.setHours(10, 0, 0, 0);
+  const formatGCal = (d: Date) =>
+    d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&details=${encodeURIComponent(event.description)}&location=${encodeURIComponent(event.propertyName + ' - ' + event.unitLabel)}&dates=${formatGCal(startDate)}/${formatGCal(endDate)}`;
 }
 
 async function addToDeviceCalendar(event: CalendarEvent): Promise<void> {
   if (Platform.OS === 'web') {
-    const startDate = new Date(event.date);
-    startDate.setHours(9, 0, 0, 0);
-    const endDate = new Date(startDate);
-    endDate.setHours(10, 0, 0, 0);
-
-    const formatGCal = (d: Date) =>
-      d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-
-    const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&details=${encodeURIComponent(event.description)}&location=${encodeURIComponent(event.propertyName + ' - ' + event.unitLabel)}&dates=${formatGCal(startDate)}/${formatGCal(endDate)}`;
-
-    window.open(googleUrl, '_blank');
+    const url = buildGoogleCalUrl(event);
+    window.open(url, '_blank');
     return;
   }
 
   try {
-    const Calendar = await import('expo-calendar');
-    await Calendar.createEventInCalendarAsync({
+    const ExpoCalendar = await import('expo-calendar');
+    const isAvailable = await ExpoCalendar.isAvailableAsync();
+    if (!isAvailable) {
+      console.log('[Calendar] Calendar API not available, using fallback');
+      const url = buildGoogleCalUrl(event);
+      await Linking.openURL(url);
+      return;
+    }
+    const startDate = new Date(event.date);
+    startDate.setHours(9, 0, 0, 0);
+    const endDate = new Date(startDate);
+    endDate.setHours(10, 0, 0, 0);
+    await ExpoCalendar.createEventInCalendarAsync({
       title: event.title,
       notes: event.description,
       location: `${event.propertyName} - ${event.unitLabel}`,
-      startDate: new Date(event.date),
-      endDate: new Date(event.date.getTime() + 60 * 60 * 1000),
+      startDate,
+      endDate,
       alarms: [{ relativeOffset: -60 }],
     });
     console.log('[Calendar] Event created via system UI');
   } catch (err) {
-    console.log('[Calendar] Error creating event:', err);
-    Alert.alert('Error', 'Could not open calendar. Please try again.');
+    console.log('[Calendar] Error creating event via native, trying fallback:', err);
+    try {
+      const url = buildGoogleCalUrl(event);
+      await Linking.openURL(url);
+    } catch (fallbackErr) {
+      console.log('[Calendar] Fallback also failed:', fallbackErr);
+      Alert.alert('Error', 'Could not open calendar. Please try again.');
+    }
   }
 }
 
@@ -150,19 +169,55 @@ export default function CalendarScreen() {
   }, [today, animateTransition]);
 
   const calendarEvents = useMemo<CalendarEvent[]>(() => {
-    return requests.map(r => ({
-      id: r.id,
-      title: `${REQUEST_CATEGORIES.find(c => c.key === r.category)?.icon ?? '🔧'} ${r.category.charAt(0).toUpperCase() + r.category.slice(1)} - ${r.propertyName}`,
-      description: r.description,
-      date: new Date(r.createdAt),
-      category: r.category,
-      status: r.status,
-      propertyName: r.propertyName,
-      unitLabel: r.unitLabel,
-      tenantName: r.tenantName,
-      type: 'request' as const,
-      request: r,
-    }));
+    const events: CalendarEvent[] = [];
+    for (const r of requests) {
+      const catIcon = REQUEST_CATEGORIES.find(c => c.key === r.category)?.icon ?? '🔧';
+      const catLabel = r.category.charAt(0).toUpperCase() + r.category.slice(1);
+      events.push({
+        id: `${r.id}-created`,
+        title: `${catIcon} ${catLabel} - ${r.propertyName}`,
+        description: r.description,
+        date: new Date(r.createdAt),
+        category: r.category,
+        status: r.status,
+        propertyName: r.propertyName,
+        unitLabel: r.unitLabel,
+        tenantName: r.tenantName,
+        type: 'request_created',
+        request: r,
+      });
+      if (r.serviceDate) {
+        events.push({
+          id: `${r.id}-service`,
+          title: `🛠 Service: ${catLabel} - ${r.propertyName}`,
+          description: `Scheduled service for: ${r.description}`,
+          date: new Date(r.serviceDate + 'T12:00:00'),
+          category: r.category,
+          status: r.status,
+          propertyName: r.propertyName,
+          unitLabel: r.unitLabel,
+          tenantName: r.tenantName,
+          type: 'service_date',
+          request: r,
+        });
+      }
+      if (r.requestedDate) {
+        events.push({
+          id: `${r.id}-requested`,
+          title: `📅 Requested: ${catLabel} - ${r.propertyName}`,
+          description: `Tenant requested service on this date: ${r.description}`,
+          date: new Date(r.requestedDate + 'T12:00:00'),
+          category: r.category,
+          status: r.status,
+          propertyName: r.propertyName,
+          unitLabel: r.unitLabel,
+          tenantName: r.tenantName,
+          type: 'requested_date',
+          request: r,
+        });
+      }
+    }
+    return events;
   }, [requests]);
 
   const eventsByDate = useMemo(() => {
@@ -365,7 +420,7 @@ export default function CalendarScreen() {
             </View>
             <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No events this day</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textTertiary }]}>
-              Maintenance requests will appear here based on their creation date.
+              Maintenance requests and service dates will appear here.
             </Text>
           </View>
         ) : (
@@ -373,6 +428,18 @@ export default function CalendarScreen() {
             const catInfo = REQUEST_CATEGORIES.find(c => c.key === event.category);
             const statusColor = getStatusColor(event.status as 'open' | 'in_progress' | 'resolved');
             const catColor = getCategoryColor(event.category as 'plumbing' | 'electrical' | 'hvac' | 'appliance' | 'other');
+
+            const eventTypeLabel = event.type === 'service_date'
+              ? '🛠 Service'
+              : event.type === 'requested_date'
+              ? '📅 Requested'
+              : null;
+
+            const accentColor = event.type === 'service_date'
+              ? '#E67E22'
+              : event.type === 'requested_date'
+              ? '#3498DB'
+              : catColor;
 
             return (
               <View
@@ -383,16 +450,22 @@ export default function CalendarScreen() {
                   style={styles.eventCardContent}
                   onPress={() => {
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push({ pathname: '/request-detail', params: { id: event.id } } as never);
+                    router.push({ pathname: '/request-detail', params: { id: event.request.id } } as never);
                   }}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.eventAccent, { backgroundColor: catColor }]} />
+                  <View style={[styles.eventAccent, { backgroundColor: accentColor }]} />
                   <View style={styles.eventBody}>
                     <View style={styles.eventTopRow}>
-                      <View style={[styles.catBadge, { backgroundColor: catColor + '14' }]}>
-                        <Text style={styles.catEmoji}>{catInfo?.icon ?? '🔧'}</Text>
-                        <Text style={[styles.catText, { color: catColor }]}>{catInfo?.label ?? 'Other'}</Text>
+                      <View style={[styles.catBadge, { backgroundColor: accentColor + '14' }]}>
+                        {eventTypeLabel ? (
+                          <Text style={[styles.catText, { color: accentColor }]}>{eventTypeLabel}</Text>
+                        ) : (
+                          <>
+                            <Text style={styles.catEmoji}>{catInfo?.icon ?? '🔧'}</Text>
+                            <Text style={[styles.catText, { color: catColor }]}>{catInfo?.label ?? 'Other'}</Text>
+                          </>
+                        )}
                       </View>
                       <View style={[styles.statusBadge, { backgroundColor: statusColor + '14' }]}>
                         {getStatusIcon(event.status)}
