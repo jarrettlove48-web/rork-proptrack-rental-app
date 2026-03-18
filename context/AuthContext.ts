@@ -149,12 +149,29 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const resetPassword = useCallback(async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://app.proptrack.app/auth/reset-password',
+      });
       if (error) {
         Alert.alert('Error', error.message);
         return false;
       }
       Alert.alert('Check Your Email', 'A password reset link has been sent to your email.');
+      return true;
+    } catch {
+      Alert.alert('Error', 'An unexpected error occurred.');
+      return false;
+    }
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        Alert.alert('Error', error.message);
+        return false;
+      }
+      Alert.alert('Success', 'Your password has been updated.');
       return true;
     } catch {
       Alert.alert('Error', 'An unexpected error occurred.');
@@ -173,5 +190,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     signUp,
     signOut,
     resetPassword,
-  }), [session, user, isLoading, isSigningIn, isSigningUp, signIn, signUp, signOut, resetPassword]);
+    updatePassword,
+  }), [session, user, isLoading, isSigningIn, isSigningUp, signIn, signUp, signOut, resetPassword, updatePassword]);
 });

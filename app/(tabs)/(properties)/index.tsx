@@ -182,11 +182,19 @@ export default function PropertiesScreen() {
                 <TouchableOpacity
                   style={styles.activityRow}
                   onPress={() => {
-                    if (activity.relatedId && (activity.type === 'request_created' || activity.type === 'request_updated' || activity.type === 'message_sent')) {
-                      router.push({ pathname: '/request-detail', params: { id: activity.relatedId } } as never);
+                    const hasNav = activity.relatedId || activity.relatedPropertyId;
+                    if (!hasNav) return;
+                    if (activity.type === 'request_created' || activity.type === 'request_updated' || activity.type === 'message_sent') {
+                      if (activity.relatedId) router.push({ pathname: '/request-detail', params: { id: activity.relatedId } } as never);
+                    } else if (activity.type === 'property_added') {
+                      if (activity.relatedId) router.push({ pathname: '/(tabs)/(properties)/[id]', params: { id: activity.relatedId } } as never);
+                    } else if (activity.type === 'unit_added' || activity.type === 'tenant_invited') {
+                      if (activity.relatedPropertyId) router.push({ pathname: '/(tabs)/(properties)/[id]', params: { id: activity.relatedPropertyId } } as never);
+                    } else if (activity.type === 'expense_added') {
+                      router.push('/(tabs)/expenses' as never);
                     }
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={activity.relatedId || activity.relatedPropertyId ? 0.7 : 1}
                 >
                   <View style={[styles.activityIconWrap, { backgroundColor: colors.surfaceSecondary }]}>
                     {getActivityIcon(activity.type)}

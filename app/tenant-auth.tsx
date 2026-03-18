@@ -22,7 +22,7 @@ import { useTheme } from '@/context/ThemeContext';
 type TenantStep = 'code' | 'password';
 
 export default function TenantAuthScreen() {
-  const { signIn, signUp, isSigningIn, isSigningUp, isAuthenticated } = useAuth();
+  const { signIn, signUp, resetPassword, isSigningIn, isSigningUp, isAuthenticated } = useAuth();
   const { checkInviteCode, verifyInviteCode } = useTenant();
   const { colors } = useTheme();
 
@@ -287,6 +287,21 @@ export default function TenantAuthScreen() {
 
       {tenantMode === 'new' && (
         <Text style={[styles.passwordHint, { color: colors.textTertiary }]}>Minimum 6 characters</Text>
+      )}
+
+      {tenantMode === 'returning' && (
+        <TouchableOpacity
+          style={styles.forgotLink}
+          onPress={() => {
+            if (email.trim()) {
+              void resetPassword(email.trim());
+            } else {
+              setError('Enter your email first, then tap Forgot Password.');
+            }
+          }}
+        >
+          <Text style={[styles.forgotLinkText, { color: '#1A6B5C' }]}>Forgot password?</Text>
+        </TouchableOpacity>
       )}
 
       {!!error && (
@@ -565,5 +580,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  forgotLinkText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
   },
 });

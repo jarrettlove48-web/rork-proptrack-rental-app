@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Home, User as UserIcon, Plus, Pencil, Trash2, UserPlus, Check, Phone, Mail, Lock } from 'lucide-react-native';
+import { Home, User as UserIcon, Plus, Pencil, Trash2, UserPlus, Check, Phone, Mail, Lock, Calendar } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -127,6 +127,12 @@ export default function PropertyDetailScreen() {
             <View style={styles.contactItem}>
               <Mail size={10} color={colors.textTertiary} strokeWidth={2} />
               <Text style={[styles.contactText, { color: colors.textTertiary }]}>{item.tenantEmail}</Text>
+            </View>
+          ) : null}
+          {item.leaseEndDate ? (
+            <View style={styles.contactItem}>
+              <Calendar size={10} color={colors.warning} strokeWidth={2} />
+              <Text style={[styles.contactText, { color: colors.warning }]}>Lease ends {new Date(item.leaseEndDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
             </View>
           ) : null}
         </View>

@@ -11,7 +11,7 @@ import {
   Switch,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import { Home, User, Phone, Mail, X } from 'lucide-react-native';
+import { Home, User, Phone, Mail, X, Calendar } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -29,21 +29,24 @@ export default function EditUnitScreen() {
   const [tenantName, setTenantName] = useState(unit?.tenantName ?? '');
   const [tenantPhone, setTenantPhone] = useState(unit?.tenantPhone ?? '');
   const [tenantEmail, setTenantEmail] = useState(unit?.tenantEmail ?? '');
+  const [leaseEndDate, setLeaseEndDate] = useState(unit?.leaseEndDate ?? '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const isValid = label.trim().length > 0;
 
   const handleSubmit = useCallback(() => {
     if (!isValid || !unitId) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    updateUnit(unitId, {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void updateUnit(unitId, {
       label: label.trim(),
       tenantName: tenantName.trim(),
       tenantPhone: tenantPhone.trim(),
       tenantEmail: tenantEmail.trim(),
+      leaseEndDate: leaseEndDate || null,
       isOccupied,
     });
     router.back();
-  }, [label, tenantName, tenantPhone, tenantEmail, isOccupied, unitId, isValid, updateUnit, router]);
+  }, [label, tenantName, tenantPhone, tenantEmail, leaseEndDate, isOccupied, unitId, isValid, updateUnit, router]);
 
   if (!unit) {
     return (
@@ -147,6 +150,48 @@ export default function EditUnitScreen() {
                 />
               </View>
             </View>
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Lease End Date (optional)</Text>
+              <TouchableOpacity
+                style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => setShowDatePicker(!showDatePicker)}
+              >
+                <Calendar size={16} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.dateText, { color: leaseEndDate ? colors.text : colors.textTertiary }]}>
+                  {leaseEndDate
+                    ? new Date(leaseEndDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                    : 'Select a date'}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <View style={[styles.datePickerDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  {Array.from({ length: 24 }).map((_, i) => {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() + i + 1);
+                    d.setDate(1);
+                    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+                    const lbl = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    return (
+                      <TouchableOpacity
+                        key={dateStr}
+                        style={[styles.dateOption, leaseEndDate === dateStr && { backgroundColor: colors.primaryFaint }, { borderBottomColor: colors.divider }]}
+                        onPress={() => { setLeaseEndDate(dateStr); setShowDatePicker(false); }}
+                      >
+                        <Text style={[styles.dateOptionText, { color: colors.text }, leaseEndDate === dateStr && { color: colors.primary, fontWeight: '600' as const }]}>{lbl}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {leaseEndDate ? (
+                    <TouchableOpacity
+                      style={[styles.dateOption, { borderBottomColor: colors.divider }]}
+                      onPress={() => { setLeaseEndDate(''); setShowDatePicker(false); }}
+                    >
+                      <Text style={[styles.dateOptionText, { color: colors.danger }]}>Clear Date</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              )}
+            </View>
           </>
         )}
 
@@ -179,4 +224,8 @@ const styles = StyleSheet.create({
   submitBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 12 },
   submitBtnDisabled: { opacity: 0.4 },
   submitBtnText: { fontSize: 16, fontWeight: '600' as const },
+  dateText: { flex: 1, fontSize: 15, paddingVertical: 14 },
+  datePickerDropdown: { borderRadius: 12, marginTop: 4, borderWidth: 1, overflow: 'hidden', maxHeight: 200 },
+  dateOption: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 0.5 },
+  dateOptionText: { fontSize: 15 },
 });

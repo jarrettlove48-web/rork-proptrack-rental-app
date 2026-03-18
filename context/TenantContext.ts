@@ -197,10 +197,24 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     }
   }, [checkInviteCodeFallback]);
 
-  const verifyInviteCode = useCallback(async (code: string): Promise<boolean> => {
+  const linkTenantToUnit = useCallback(async (unitId: string, normalizedCode: string): Promise<boolean> => {
     if (!userId) return false;
-    const normalizedCode = code.toUpperCase().trim();
-    console.log('[Tenant] Verifying + linking invite code:', normalizedCode);
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ role: 'tenant' })
+      .eq('id', userId);
+    if (profileError) console.log('[Tenant] Profile update error:', profileError.message);
+
+    const session: TenantSession = { unitId, inviteCode: normalizedCode };
+    setTenantSession(session);
+    setIsTenantRole(true);
+    await AsyncStorage.setItem(TENANT_UNIT_KEY, JSON.stringify(session));
+    return true;
+  }, [userId]);
+
+  const verifyInviteCodeDirectFallback = useCallback(async (normalizedCode: string): Promise<boolean> => {
+    if (!userId) return false;
+    console.log('[Tenant] Fallback: direct update for invite code:', normalizedCode);
 
     const checkResult = await checkInviteCode(normalizedCode);
     if (!checkResult.valid || !checkResult.unitId) {
@@ -213,26 +227,49 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
       .eq('id', checkResult.unitId);
 
     if (updateError) {
-      console.log('[Tenant] Update error:', updateError.message);
+      console.log('[Tenant] Fallback update error:', updateError.message);
       Alert.alert('Error', 'Something went wrong linking your account. Please try again.');
       return false;
     }
 
-    const unitId = checkResult.unitId;
-    console.log('[Tenant] Valid code, linked to unit:', unitId);
+    console.log('[Tenant] Fallback: linked to unit:', checkResult.unitId);
+    return await linkTenantToUnit(checkResult.unitId, normalizedCode);
+  }, [userId, checkInviteCode, linkTenantToUnit]);
 
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ role: 'tenant' })
-      .eq('id', userId);
-    if (profileError) console.log('[Tenant] Profile update error:', profileError.message);
+  const verifyInviteCode = useCallback(async (code: string): Promise<boolean> => {
+    if (!userId) return false;
+    const normalizedCode = code.toUpperCase().trim();
+    console.log('[Tenant] Verifying + linking invite code via RPC:', normalizedCode);
 
-    const session: TenantSession = { unitId, inviteCode: normalizedCode };
-    setTenantSession(session);
-    setIsTenantRole(true);
-    await AsyncStorage.setItem(TENANT_UNIT_KEY, JSON.stringify(session));
-    return true;
-  }, [userId, checkInviteCode]);
+    try {
+      const { data, error } = await supabase.rpc('redeem_invite', { code: normalizedCode });
+
+      if (error) {
+        console.log('[Tenant] redeem_invite RPC error:', error.message, error.code);
+        if (error.message?.includes('function') || error.code === '42883') {
+          console.log('[Tenant] RPC not found, falling back to direct update');
+          return await verifyInviteCodeDirectFallback(normalizedCode);
+        }
+        Alert.alert('Error', 'Something went wrong linking your account. Please try again.');
+        return false;
+      }
+
+      const result = data as Record<string, unknown> | null;
+      if (!result || !(result.success as boolean)) {
+        const errMsg = (result?.error as string) ?? 'Invalid or expired invite code';
+        console.log('[Tenant] redeem_invite failed:', errMsg);
+        Alert.alert('Error', errMsg);
+        return false;
+      }
+
+      const unitId = result.unit_id as string;
+      console.log('[Tenant] RPC success, linked to unit:', unitId, 'label:', result.label);
+      return await linkTenantToUnit(unitId, normalizedCode);
+    } catch (e) {
+      console.log('[Tenant] verifyInviteCode exception:', e);
+      return await verifyInviteCodeDirectFallback(normalizedCode);
+    }
+  }, [userId, verifyInviteCodeDirectFallback, linkTenantToUnit]);
 
   const unitQuery = useQuery({
     queryKey: ['tenant-unit', tenantSession?.unitId],

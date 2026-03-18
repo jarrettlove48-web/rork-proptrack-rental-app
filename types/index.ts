@@ -17,6 +17,7 @@ export interface Unit {
   tenantPhone: string;
   tenantEmail: string;
   moveInDate: string;
+  leaseEndDate?: string | null;
   isOccupied: boolean;
   isInvited?: boolean;
   invitedAt?: string;
@@ -73,7 +74,31 @@ export interface ActivityItem {
   subtitle: string;
   timestamp: string;
   relatedId?: string;
+  relatedPropertyId?: string;
 }
+
+export type CalendarEventType = 'maintenance' | 'rent_reminder' | 'move_in' | 'move_out' | 'inspection' | 'other';
+
+export interface CalendarEvent {
+  id: string;
+  ownerId: string;
+  propertyId: string | null;
+  unitId: string | null;
+  title: string;
+  description: string | null;
+  eventDate: string;
+  eventType: CalendarEventType;
+  createdAt: string;
+}
+
+export const CALENDAR_EVENT_TYPES: { key: CalendarEventType; label: string; color: string }[] = [
+  { key: 'maintenance', label: 'Maintenance', color: '#E67E22' },
+  { key: 'rent_reminder', label: 'Rent Reminder', color: '#27AE60' },
+  { key: 'move_in', label: 'Move In', color: '#3498DB' },
+  { key: 'move_out', label: 'Move Out', color: '#E74C3C' },
+  { key: 'inspection', label: 'Inspection', color: '#9B59B6' },
+  { key: 'other', label: 'Other', color: '#95A5A6' },
+];
 
 export interface UserProfile {
   name: string;

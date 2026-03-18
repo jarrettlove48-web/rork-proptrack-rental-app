@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent } from '@/types';
 
 function mapProperty(row: Record<string, unknown>): Property {
   return {
@@ -24,6 +24,7 @@ function mapUnit(row: Record<string, unknown>): Unit {
     tenantPhone: (row.tenant_phone as string) ?? '',
     tenantEmail: (row.tenant_email as string) ?? '',
     moveInDate: (row.move_in_date as string) ?? '',
+    leaseEndDate: (row.lease_end_date as string | null) ?? null,
     isOccupied: (row.is_occupied as boolean) ?? false,
     isInvited: (row.is_invited as boolean) ?? false,
     invitedAt: row.invited_at as string | undefined,
@@ -88,6 +89,21 @@ function mapActivity(row: Record<string, unknown>): ActivityItem {
     subtitle: (row.subtitle as string) ?? '',
     timestamp: row.created_at as string,
     relatedId: row.related_id as string | undefined,
+    relatedPropertyId: row.related_property_id as string | undefined,
+  };
+}
+
+function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
+  return {
+    id: row.id as string,
+    ownerId: row.owner_id as string,
+    propertyId: (row.property_id as string | null) ?? null,
+    unitId: (row.unit_id as string | null) ?? null,
+    title: (row.title as string) ?? '',
+    description: (row.description as string | null) ?? null,
+    eventDate: row.event_date as string,
+    eventType: row.event_type as CalendarEvent['eventType'],
+    createdAt: row.created_at as string,
   };
 }
 
@@ -121,6 +137,7 @@ export const [DataProvider, useData] = createContextHook(() => {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
   const propertiesQuery = useQuery({
     queryKey: ['properties', userId],
@@ -255,6 +272,25 @@ export const [DataProvider, useData] = createContextHook(() => {
     enabled: !!userId,
   });
 
+  const calendarEventsQuery = useQuery({
+    queryKey: ['calendarEvents', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      console.log('[Data] Fetching calendar events...');
+      const { data, error } = await supabase
+        .from('calendar_events')
+        .select('*')
+        .eq('owner_id', userId)
+        .order('event_date', { ascending: true });
+      if (error) {
+        console.log('[Data] Calendar events fetch error:', error.message);
+        throw error;
+      }
+      return (data ?? []).map(mapCalendarEvent);
+    },
+    enabled: !!userId,
+  });
+
   useEffect(() => {
     if (propertiesQuery.data) setProperties(propertiesQuery.data);
   }, [propertiesQuery.data]);
@@ -282,6 +318,10 @@ export const [DataProvider, useData] = createContextHook(() => {
   useEffect(() => {
     if (activitiesQuery.data) setActivities(activitiesQuery.data);
   }, [activitiesQuery.data]);
+
+  useEffect(() => {
+    if (calendarEventsQuery.data) setCalendarEvents(calendarEventsQuery.data);
+  }, [calendarEventsQuery.data]);
 
   useEffect(() => {
     if (!userId) return;
@@ -332,6 +372,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       title: item.title,
       subtitle: item.subtitle,
       related_id: item.relatedId ?? null,
+      related_property_id: item.relatedPropertyId ?? null,
     });
     if (error) console.log('[Data] Add activity error:', error.message);
     void queryClient.invalidateQueries({ queryKey: ['activities', userId] });
@@ -356,7 +397,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     }
     const newProperty = mapProperty(inserted);
     void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
-    void addActivityRecord({ type: 'property_added', title: 'Property added', subtitle: newProperty.name, relatedId: newProperty.id });
+    void addActivityRecord({ type: 'property_added', title: 'Property added', subtitle: newProperty.name, relatedId: newProperty.id, relatedPropertyId: newProperty.id });
     return newProperty;
   }, [userId, queryClient, addActivityRecord]);
 
@@ -396,6 +437,7 @@ export const [DataProvider, useData] = createContextHook(() => {
         tenant_phone: data.tenantPhone,
         tenant_email: data.tenantEmail,
         move_in_date: data.moveInDate,
+        lease_end_date: data.leaseEndDate ?? null,
         is_occupied: data.isOccupied,
       })
       .select()
@@ -407,7 +449,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     const newUnit = mapUnit(inserted);
     void queryClient.invalidateQueries({ queryKey: ['units', userId] });
     const prop = properties.find(p => p.id === data.propertyId);
-    void addActivityRecord({ type: 'unit_added', title: 'Unit added', subtitle: `${newUnit.label} at ${prop?.name ?? 'property'}`, relatedId: newUnit.id });
+    void addActivityRecord({ type: 'unit_added', title: 'Unit added', subtitle: `${newUnit.label} at ${prop?.name ?? 'property'}`, relatedId: newUnit.id, relatedPropertyId: data.propertyId });
     return newUnit;
   }, [userId, queryClient, properties, addActivityRecord]);
 
@@ -420,6 +462,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (data.tenantPhone !== undefined) updateData.tenant_phone = data.tenantPhone;
     if (data.tenantEmail !== undefined) updateData.tenant_email = data.tenantEmail;
     if (data.moveInDate !== undefined) updateData.move_in_date = data.moveInDate;
+    if (data.leaseEndDate !== undefined) updateData.lease_end_date = data.leaseEndDate;
     if (data.isOccupied !== undefined) updateData.is_occupied = data.isOccupied;
     if (data.isInvited !== undefined) updateData.is_invited = data.isInvited;
     if (data.invitedAt !== undefined) updateData.invited_at = data.invitedAt;
@@ -464,6 +507,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       title: 'Tenant invited',
       subtitle: `${unit?.tenantName ?? 'Tenant'} at ${prop?.name ?? 'property'}`,
       relatedId: unitId,
+      relatedPropertyId: unit?.propertyId ?? undefined,
     });
     return code;
   }, [userId, units, properties, queryClient, addActivityRecord]);
@@ -500,6 +544,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       title: 'New request',
       subtitle: `${data.category} - ${data.propertyName} ${data.unitLabel}`,
       relatedId: newRequest.id,
+      relatedPropertyId: data.propertyId,
     });
     return newRequest;
   }, [userId, queryClient, addActivityRecord]);
@@ -595,8 +640,9 @@ export const [DataProvider, useData] = createContextHook(() => {
     void addActivityRecord({
       type: 'expense_added',
       title: 'Expense logged',
-      subtitle: `$${data.amount.toFixed(2)} - ${prop?.name ?? 'property'}`,
+      subtitle: `${data.amount.toFixed(2)} - ${prop?.name ?? 'property'}`,
       relatedId: newExpense.id,
+      relatedPropertyId: data.propertyId,
     });
     return newExpense;
   }, [userId, properties, queryClient, addActivityRecord]);
@@ -661,6 +707,38 @@ export const [DataProvider, useData] = createContextHook(() => {
     return activities.slice(0, 5);
   }, [activities]);
 
+  const addCalendarEvent = useCallback(async (data: Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>) => {
+    if (!userId) return null;
+    console.log('[Data] Adding calendar event:', data.title);
+    const { data: inserted, error } = await supabase
+      .from('calendar_events')
+      .insert({
+        title: data.title,
+        event_date: data.eventDate,
+        event_type: data.eventType,
+        property_id: data.propertyId ?? null,
+        unit_id: data.unitId ?? null,
+        description: data.description ?? null,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.log('[Data] Add calendar event error:', error.message);
+      return null;
+    }
+    const newEvent = mapCalendarEvent(inserted);
+    void queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] });
+    return newEvent;
+  }, [userId, queryClient]);
+
+  const deleteCalendarEvent = useCallback(async (id: string) => {
+    if (!userId) return;
+    console.log('[Data] Deleting calendar event:', id);
+    const { error } = await supabase.from('calendar_events').delete().eq('id', id);
+    if (error) console.log('[Data] Delete calendar event error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] });
+  }, [userId, queryClient]);
+
   const isLoading = propertiesQuery.isLoading || unitsQuery.isLoading || requestsQuery.isLoading;
 
   const refetchAll = useCallback(async () => {
@@ -671,6 +749,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['messages', userId] }),
       queryClient.invalidateQueries({ queryKey: ['expenses', userId] }),
       queryClient.invalidateQueries({ queryKey: ['activities', userId] }),
+      queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] }),
       queryClient.invalidateQueries({ queryKey: ['profile', userId] }),
     ]);
   }, [queryClient, userId]);
@@ -682,6 +761,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     messages,
     expenses,
     activities,
+    calendarEvents,
     recentActivities,
     profile,
     isLoading,
@@ -699,6 +779,8 @@ export const [DataProvider, useData] = createContextHook(() => {
     addExpense,
     deleteExpense,
     updateProfile,
+    addCalendarEvent,
+    deleteCalendarEvent,
     getUnitsForProperty,
     getRequestsForProperty,
     getRequestsForUnit,
@@ -709,10 +791,11 @@ export const [DataProvider, useData] = createContextHook(() => {
     totalExpenses,
     refetchAll,
   }), [
-    properties, units, requests, messages, expenses, activities, recentActivities,
+    properties, units, requests, messages, expenses, activities, calendarEvents, recentActivities,
     profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
-    updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile, getUnitsForProperty,
+    updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
+    addCalendarEvent, deleteCalendarEvent, getUnitsForProperty,
     getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,
