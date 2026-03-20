@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
-import { supabase } from '@/lib/supabase';
+import { supabase, signInWithGoogleOAuth } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
@@ -62,6 +62,28 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       subscription.unsubscribe();
     };
   }, [queryClient]);
+
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+
+  const signInWithGoogle = useCallback(async () => {
+    setIsGoogleSigningIn(true);
+    try {
+      console.log('[Auth] Starting Google OAuth...');
+      const success = await signInWithGoogleOAuth();
+      if (!success) {
+        console.log('[Auth] Google OAuth was cancelled or failed');
+      } else {
+        console.log('[Auth] Google OAuth successful');
+      }
+      return success;
+    } catch (err) {
+      console.log('[Auth] Google OAuth exception:', err);
+      Alert.alert('Error', 'Google sign-in failed. Please try again.');
+      return false;
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
     setIsSigningIn(true);
@@ -185,11 +207,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isLoading,
     isSigningIn,
     isSigningUp,
+    isGoogleSigningIn,
     isAuthenticated: !!session,
     signIn,
     signUp,
     signOut,
+    signInWithGoogle,
     resetPassword,
     updatePassword,
-  }), [session, user, isLoading, isSigningIn, isSigningUp, signIn, signUp, signOut, resetPassword, updatePassword]);
+  }), [session, user, isLoading, isSigningIn, isSigningUp, isGoogleSigningIn, signIn, signUp, signOut, signInWithGoogle, resetPassword, updatePassword]);
 });

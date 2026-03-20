@@ -22,7 +22,7 @@ import { useTheme } from '@/context/ThemeContext';
 type TenantStep = 'code' | 'password';
 
 export default function TenantAuthScreen() {
-  const { signIn, signUp, resetPassword, isSigningIn, isSigningUp, isAuthenticated } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithGoogle, isSigningIn, isSigningUp, isGoogleSigningIn, isAuthenticated } = useAuth();
   const { checkInviteCode, verifyInviteCode } = useTenant();
   const { colors } = useTheme();
 
@@ -128,7 +128,7 @@ export default function TenantAuthScreen() {
     }
   }, [email, password, name, inviteCode, tenantMode, signIn, signUp, verifyInviteCode]);
 
-  const isSubmitting = isSigningIn || isSigningUp || isVerifying;
+  const isSubmitting = isSigningIn || isSigningUp || isVerifying || isGoogleSigningIn;
 
   const renderCodeScreen = () => (
     <Animated.View style={[styles.formCard, { backgroundColor: colors.surface, opacity: fadeAnim }]}>
@@ -183,12 +183,39 @@ export default function TenantAuthScreen() {
         activeOpacity={0.85}
         testID="verify-code-btn"
       >
-        {isSubmitting ? (
+        {(isVerifying) ? (
           <ActivityIndicator color="#FFFFFF" size="small" />
         ) : (
           <>
             <Text style={styles.submitText}>Verify & Continue</Text>
             <ArrowRight size={18} color="#FFFFFF" strokeWidth={2} />
+          </>
+        )}
+      </TouchableOpacity>
+
+      <View style={styles.dividerRow}>
+        <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+        <Text style={[styles.dividerText, { color: colors.textTertiary }]}>or</Text>
+        <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+      </View>
+
+      <TouchableOpacity
+        style={[styles.googleBtn, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }]}
+        onPress={signInWithGoogle}
+        disabled={isSubmitting}
+        activeOpacity={0.85}
+        testID="tenant-google-sign-in-btn"
+      >
+        {isGoogleSigningIn ? (
+          <ActivityIndicator color={colors.textSecondary} size="small" />
+        ) : (
+          <>
+            <View style={styles.googleIconWrap}>
+              <Text style={styles.googleIconText}>G</Text>
+            </View>
+            <Text style={[styles.googleBtnText, { color: colors.text }]}>
+              Continue with Google
+            </Text>
           </>
         )}
       </TouchableOpacity>
@@ -589,5 +616,46 @@ const styles = StyleSheet.create({
   forgotLinkText: {
     fontSize: 13,
     fontWeight: '500' as const,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+  },
+  googleIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#4285F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  googleBtnText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
   },
 });
