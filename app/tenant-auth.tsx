@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Building2, Mail, Lock, User, Eye, EyeOff, ArrowRight, KeyRound, ChevronLeft, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import GoogleLogo from '@/components/GoogleLogo';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -210,9 +211,7 @@ export default function TenantAuthScreen() {
           <ActivityIndicator color={colors.textSecondary} size="small" />
         ) : (
           <>
-            <View style={styles.googleIconWrap}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
+            <GoogleLogo size={20} />
             <Text style={[styles.googleBtnText, { color: colors.text }]}>
               Continue with Google
             </Text>
@@ -641,19 +640,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
   },
-  googleIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#4285F4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleIconText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700' as const,
-  },
+
   googleBtnText: {
     fontSize: 15,
     fontWeight: '600' as const,
