@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant } from '@/types';
 
 function mapProperty(row: Record<string, unknown>): Property {
   return {
@@ -93,6 +93,26 @@ function mapActivity(row: Record<string, unknown>): ActivityItem {
   };
 }
 
+function mapTenant(row: Record<string, unknown>): Tenant {
+  return {
+    id: row.id as string,
+    unitId: row.unit_id as string,
+    propertyId: row.property_id as string,
+    ownerId: row.owner_id as string,
+    name: row.name as string,
+    email: (row.email as string) ?? null,
+    phone: (row.phone as string) ?? null,
+    userId: (row.user_id as string) ?? null,
+    leaseStart: (row.lease_start as string) ?? null,
+    leaseEnd: (row.lease_end as string) ?? null,
+    moveInDate: (row.move_in_date as string) ?? null,
+    moveOutDate: (row.move_out_date as string) ?? null,
+    isActive: (row.is_active as boolean) ?? true,
+    inviteCode: (row.invite_code as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
 function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
   return {
     id: row.id as string,
@@ -138,6 +158,7 @@ export const [DataProvider, useData] = createContextHook(() => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
 
   const propertiesQuery = useQuery({
     queryKey: ['properties', userId],
@@ -272,6 +293,25 @@ export const [DataProvider, useData] = createContextHook(() => {
     enabled: !!userId,
   });
 
+  const tenantsQuery = useQuery({
+    queryKey: ['tenants', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      console.log('[Data] Fetching tenants...');
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at');
+      if (error) {
+        console.log('[Data] Tenants fetch error:', error.message);
+        throw error;
+      }
+      return (data ?? []).map(mapTenant);
+    },
+    enabled: !!userId,
+  });
+
   const calendarEventsQuery = useQuery({
     queryKey: ['calendarEvents', userId],
     queryFn: async () => {
@@ -322,6 +362,10 @@ export const [DataProvider, useData] = createContextHook(() => {
   useEffect(() => {
     if (calendarEventsQuery.data) setCalendarEvents(calendarEventsQuery.data);
   }, [calendarEventsQuery.data]);
+
+  useEffect(() => {
+    if (tenantsQuery.data) setTenants(tenantsQuery.data);
+  }, [tenantsQuery.data]);
 
   useEffect(() => {
     if (!userId) return;
@@ -691,6 +735,98 @@ export const [DataProvider, useData] = createContextHook(() => {
     return expenses.filter(e => e.propertyId === propertyId);
   }, [expenses]);
 
+  const getTenantsForUnit = useCallback((unitId: string) => {
+    return tenants.filter(t => t.unitId === unitId);
+  }, [tenants]);
+
+  const addTenant = useCallback(async (data: {
+    unitId: string;
+    propertyId: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    moveInDate?: string;
+    leaseStart?: string;
+    leaseEnd?: string;
+  }) => {
+    if (!userId) return null;
+    console.log('[Data] Adding tenant:', data.name);
+    const { data: inserted, error } = await supabase
+      .from('tenants')
+      .insert({
+        unit_id: data.unitId,
+        property_id: data.propertyId,
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone || null,
+        move_in_date: data.moveInDate || null,
+        lease_start: data.leaseStart || null,
+        lease_end: data.leaseEnd || null,
+        is_active: true,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.log('[Data] Add tenant error:', error.message);
+      return null;
+    }
+    await supabase.from('units').update({
+      is_occupied: true,
+      tenant_name: data.name,
+      tenant_email: data.email || '',
+      tenant_phone: data.phone || '',
+    }).eq('id', data.unitId);
+    void queryClient.invalidateQueries({ queryKey: ['tenants', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
+    return mapTenant(inserted);
+  }, [userId, queryClient]);
+
+  const moveTenantOut = useCallback(async (tenantId: string, unitId: string) => {
+    if (!userId) return;
+    console.log('[Data] Moving tenant out:', tenantId);
+    await supabase.from('tenants').update({
+      is_active: false,
+      move_out_date: new Date().toISOString().split('T')[0],
+    }).eq('id', tenantId);
+    const { data: remaining } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('unit_id', unitId)
+      .eq('is_active', true);
+    if (!remaining || remaining.length === 0) {
+      await supabase.from('units').update({
+        is_occupied: false,
+        tenant_name: '',
+        tenant_email: '',
+        tenant_phone: '',
+      }).eq('id', unitId);
+    } else {
+      const next = remaining[0];
+      await supabase.from('units').update({
+        tenant_name: (next as Record<string, unknown>).name as string || '',
+        tenant_email: (next as Record<string, unknown>).email as string || '',
+        tenant_phone: (next as Record<string, unknown>).phone as string || '',
+      }).eq('id', unitId);
+    }
+    void queryClient.invalidateQueries({ queryKey: ['tenants', userId] });
+    void queryClient.invalidateQueries({ queryKey: ['units', userId] });
+  }, [userId, queryClient]);
+
+  const updateTenant = useCallback(async (tenantId: string, updates: Partial<{
+    name: string;
+    email: string;
+    phone: string;
+    move_in_date: string;
+    lease_start: string;
+    lease_end: string;
+  }>) => {
+    if (!userId) return;
+    console.log('[Data] Updating tenant:', tenantId);
+    const { error } = await supabase.from('tenants').update(updates).eq('id', tenantId);
+    if (error) console.log('[Data] Update tenant error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['tenants', userId] });
+  }, [userId, queryClient]);
+
   const openRequestCount = useMemo(() => {
     return requests.filter(r => r.status !== 'resolved').length;
   }, [requests]);
@@ -750,6 +886,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['expenses', userId] }),
       queryClient.invalidateQueries({ queryKey: ['activities', userId] }),
       queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] }),
+      queryClient.invalidateQueries({ queryKey: ['tenants', userId] }),
       queryClient.invalidateQueries({ queryKey: ['profile', userId] }),
     ]);
   }, [queryClient, userId]);
@@ -762,6 +899,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     expenses,
     activities,
     calendarEvents,
+    tenants,
     recentActivities,
     profile,
     isLoading,
@@ -781,23 +919,27 @@ export const [DataProvider, useData] = createContextHook(() => {
     updateProfile,
     addCalendarEvent,
     deleteCalendarEvent,
+    addTenant,
+    moveTenantOut,
+    updateTenant,
     getUnitsForProperty,
     getRequestsForProperty,
     getRequestsForUnit,
     getMessagesForRequest,
     getExpensesForProperty,
+    getTenantsForUnit,
     openRequestCount,
     occupiedUnitCount,
     totalExpenses,
     refetchAll,
   }), [
-    properties, units, requests, messages, expenses, activities, calendarEvents, recentActivities,
+    properties, units, requests, messages, expenses, activities, calendarEvents, tenants, recentActivities,
     profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
     updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
-    addCalendarEvent, deleteCalendarEvent, getUnitsForProperty,
-    getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
-    getExpensesForProperty, openRequestCount, occupiedUnitCount, totalExpenses,
+    addCalendarEvent, deleteCalendarEvent, addTenant, moveTenantOut, updateTenant,
+    getUnitsForProperty, getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
+    getExpensesForProperty, getTenantsForUnit, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,
   ]);
 });

@@ -141,7 +141,7 @@ async function addToDeviceCalendar(event: DisplayEvent): Promise<void> {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { requests, units, properties, calendarEvents, addCalendarEvent, deleteCalendarEvent } = useData();
+  const { requests, units, properties, calendarEvents, tenants, addCalendarEvent, deleteCalendarEvent } = useData();
   const { colors } = useTheme();
   const today = useMemo(() => new Date(), []);
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -278,6 +278,29 @@ export default function CalendarScreen() {
       }
     }
 
+    const seenLeaseEnds = new Set(units.filter(u => u.leaseEndDate).map(u => `${u.id}-${u.leaseEndDate}`));
+    for (const t of tenants) {
+      if (t.leaseEnd && t.isActive) {
+        const alreadyFromUnit = seenLeaseEnds.has(`${t.unitId}-${t.leaseEnd}`);
+        if (alreadyFromUnit) continue;
+        const prop = properties.find(p => p.id === t.propertyId);
+        const unit = units.find(u => u.id === t.unitId);
+        events.push({
+          id: `tenant-lease-${t.id}`,
+          title: `📋 Lease Ends - ${t.name}`,
+          description: `Lease ending for ${t.name} at ${prop?.name ?? 'property'}`,
+          date: new Date(t.leaseEnd + 'T12:00:00'),
+          category: 'lease_end',
+          status: '',
+          propertyName: prop?.name ?? '',
+          unitLabel: unit?.label ?? '',
+          tenantName: t.name,
+          type: 'lease_end',
+          colorType: 'lease_end',
+        });
+      }
+    }
+
     for (const ce of calendarEvents) {
       const prop = properties.find(p => p.id === ce.propertyId);
       const unit = units.find(u => u.id === ce.unitId);
@@ -298,7 +321,7 @@ export default function CalendarScreen() {
     }
 
     return events;
-  }, [requests, units, properties, calendarEvents]);
+  }, [requests, units, properties, calendarEvents, tenants]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, DisplayEvent[]>();

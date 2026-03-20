@@ -100,6 +100,24 @@ export const CALENDAR_EVENT_TYPES: { key: CalendarEventType; label: string; colo
   { key: 'other', label: 'Other', color: '#95A5A6' },
 ];
 
+export interface Tenant {
+  id: string;
+  unitId: string;
+  propertyId: string;
+  ownerId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  userId: string | null;
+  leaseStart: string | null;
+  leaseEnd: string | null;
+  moveInDate: string | null;
+  moveOutDate: string | null;
+  isActive: boolean;
+  inviteCode: string | null;
+  createdAt: string;
+}
+
 export interface UserProfile {
   name: string;
   email: string;
