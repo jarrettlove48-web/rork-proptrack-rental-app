@@ -22,8 +22,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 export function getOAuthRedirectUrl() {
+  if (Platform.OS === 'web') {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://rork.com';
+    const redirectUrl = `${origin}/auth/callback`;
+    console.log('[OAuth] Web redirect URL:', redirectUrl);
+    return redirectUrl;
+  }
   const redirectUrl = Linking.createURL('auth/callback');
-  console.log('[OAuth] Redirect URL:', redirectUrl);
+  console.log('[OAuth] Native redirect URL:', redirectUrl);
   return redirectUrl;
 }
 
