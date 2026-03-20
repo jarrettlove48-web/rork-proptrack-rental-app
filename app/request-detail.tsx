@@ -9,32 +9,83 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, Calendar, ChevronDown, X } from 'lucide-react-native';
+import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, Calendar, ChevronDown, X, Wrench, UserCheck, UserX, Star } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
-import { REQUEST_CATEGORIES, STATUS_LABELS } from '@/types';
+import { REQUEST_CATEGORIES, STATUS_LABELS, REQUEST_TO_CONTRACTOR_CATEGORY, RequestMedia, ContractorCategory } from '@/types';
 import { formatDate, formatFullDate, getStatusColor, getCategoryColor, getNextStatus, getNextStatusLabel } from '@/utils/helpers';
+
+const CONTRACTOR_STATUS_COLORS: Record<string, string> = {
+  pending: '#D97706',
+  accepted: '#059669',
+  declined: '#DC2626',
+};
+
+const CATEGORY_COLORS: Record<ContractorCategory, string> = {
+  plumber: '#2563EB',
+  electrician: '#D97706',
+  general_contractor: '#059669',
+  landscaper: '#16A34A',
+  painter: '#DB2777',
+  roofer: '#9333EA',
+  hvac_tech: '#7C3AED',
+  other: '#78716C',
+};
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { requests, updateRequestStatus, updateRequestDates, getMessagesForRequest, addMessage, profile } = useData();
+  const { requests, updateRequestStatus, updateRequestDates, getMessagesForRequest, addMessage, profile, contractors, assignContractor, unassignContractor, getRequestMedia } = useData();
   const { colors } = useTheme();
   const [messageText, setMessageText] = useState('');
   const [showServiceDatePicker, setShowServiceDatePicker] = useState(false);
   const [showRequestedDatePicker, setShowRequestedDatePicker] = useState(false);
+  const [showContractorPicker, setShowContractorPicker] = useState(false);
+  const [mediaItems, setMediaItems] = useState<RequestMedia[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(true);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const request = useMemo(() => requests.find(r => r.id === id), [requests, id]);
   const requestMessages = useMemo(() => getMessagesForRequest(id ?? ''), [getMessagesForRequest, id]);
   const catInfo = useMemo(() => REQUEST_CATEGORIES.find(c => c.key === request?.category), [request]);
 
+  const assignedContractor = useMemo(() => {
+    if (!request?.assignedContractorId) return null;
+    return contractors.find(c => c.id === request.assignedContractorId) ?? null;
+  }, [request?.assignedContractorId, contractors]);
+
+  const sortedContractors = useMemo(() => {
+    if (!request) return contractors;
+    const matchCategory = REQUEST_TO_CONTRACTOR_CATEGORY[request.category];
+    const matched = contractors.filter(c => c.category === matchCategory);
+    const others = contractors.filter(c => c.category !== matchCategory);
+    return [...matched, ...others];
+  }, [contractors, request]);
+
+  const bestMatchCategory = useMemo(() => {
+    if (!request) return null;
+    return REQUEST_TO_CONTRACTOR_CATEGORY[request.category];
+  }, [request]);
+
   const nextStatus = request ? getNextStatus(request.status) : null;
   const nextStatusLabel = request ? getNextStatusLabel(request.status) : null;
+
+  useEffect(() => {
+    if (id) {
+      setMediaLoading(true);
+      getRequestMedia(id).then(items => {
+        setMediaItems(items);
+        setMediaLoading(false);
+      }).catch(() => setMediaLoading(false));
+    }
+  }, [id, getRequestMedia]);
 
   useEffect(() => {
     if (requestMessages.length > 0) {
@@ -98,6 +149,28 @@ export default function RequestDetailScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
   }, [messageText, id, addMessage, profile.name]);
 
+  const handleAssignContractor = useCallback((contractorId: string) => {
+    if (!request) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void assignContractor(request.id, contractorId);
+    setShowContractorPicker(false);
+  }, [request, assignContractor]);
+
+  const handleUnassignContractor = useCallback(() => {
+    if (!request) return;
+    Alert.alert('Unassign Contractor', 'Remove the assigned contractor from this request?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unassign',
+        style: 'destructive',
+        onPress: () => {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          void unassignContractor(request.id);
+        },
+      },
+    ]);
+  }, [request, unassignContractor]);
+
   const getStatusIcon = useCallback((status: string) => {
     switch (status) {
       case 'open': return <AlertCircle size={14} color={colors.statusOpen} strokeWidth={2} />;
@@ -148,7 +221,22 @@ export default function RequestDetailScreen() {
           <Text style={[styles.requestDescription, { color: colors.text }]}>{request.description}</Text>
 
           {request.photoUri && (
-            <Image source={{ uri: request.photoUri }} style={styles.requestPhoto} contentFit="cover" />
+            <TouchableOpacity onPress={() => setViewingImage(request.photoUri ?? null)}>
+              <Image source={{ uri: request.photoUri }} style={styles.requestPhoto} contentFit="cover" />
+            </TouchableOpacity>
+          )}
+
+          {mediaItems.length > 0 && (
+            <View style={styles.mediaGrid}>
+              {mediaItems.map(m => (
+                <TouchableOpacity key={m.id} onPress={() => setViewingImage(m.mediaUrl)} style={styles.mediaThumbnailWrap}>
+                  <Image source={{ uri: m.mediaUrl }} style={styles.mediaThumbnail} contentFit="cover" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {mediaLoading && mediaItems.length === 0 && !request.photoUri && (
+            <ActivityIndicator size="small" color={colors.textTertiary} style={{ marginBottom: 14 }} />
           )}
 
           <View style={styles.metaRow}>
@@ -269,6 +357,7 @@ export default function RequestDetailScreen() {
               )}
             </View>
           </View>
+
           {request.tenantName ? (
             <TouchableOpacity
               style={[styles.tenantBanner, { backgroundColor: colors.surfaceSecondary }]}
@@ -286,6 +375,110 @@ export default function RequestDetailScreen() {
               </View>
             </TouchableOpacity>
           ) : null}
+
+          <View style={[styles.contractorSection, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            <View style={styles.contractorHeader}>
+              <Wrench size={14} color={colors.accent} strokeWidth={2} />
+              <Text style={[styles.contractorHeaderText, { color: colors.textSecondary }]}>Assigned Contractor</Text>
+            </View>
+            {assignedContractor ? (
+              <View>
+                <View style={styles.assignedRow}>
+                  <View style={styles.assignedInfo}>
+                    <Text style={[styles.assignedName, { color: colors.text }]}>
+                      {assignedContractor.firstName} {assignedContractor.lastName}
+                    </Text>
+                    {assignedContractor.company ? (
+                      <Text style={[styles.assignedCompany, { color: colors.textTertiary }]}>{assignedContractor.company}</Text>
+                    ) : null}
+                  </View>
+                  {request.contractorStatus && (
+                    <View style={[styles.contractorStatusBadge, { backgroundColor: (CONTRACTOR_STATUS_COLORS[request.contractorStatus] ?? '#78716C') + '14' }]}>
+                      {request.contractorStatus === 'accepted' && <UserCheck size={11} color={CONTRACTOR_STATUS_COLORS.accepted} strokeWidth={2} />}
+                      {request.contractorStatus === 'pending' && <Clock size={11} color={CONTRACTOR_STATUS_COLORS.pending} strokeWidth={2} />}
+                      {request.contractorStatus === 'declined' && <UserX size={11} color={CONTRACTOR_STATUS_COLORS.declined} strokeWidth={2} />}
+                      <Text style={[styles.contractorStatusText, { color: CONTRACTOR_STATUS_COLORS[request.contractorStatus] ?? '#78716C' }]}>
+                        {request.contractorStatus.charAt(0).toUpperCase() + request.contractorStatus.slice(1)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                {isEditable && (
+                  <TouchableOpacity
+                    style={[styles.unassignBtn, { backgroundColor: colors.dangerLight }]}
+                    onPress={handleUnassignContractor}
+                  >
+                    <X size={12} color={colors.danger} strokeWidth={2} />
+                    <Text style={[styles.unassignBtnText, { color: colors.danger }]}>Unassign</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : isEditable && contractors.length > 0 ? (
+              <View>
+                <TouchableOpacity
+                  style={[styles.assignBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => setShowContractorPicker(!showContractorPicker)}
+                >
+                  <Text style={[styles.assignBtnText, { color: colors.primary }]}>Assign Contractor</Text>
+                  <ChevronDown size={14} color={colors.primary} strokeWidth={2} />
+                </TouchableOpacity>
+                {showContractorPicker && (
+                  <ScrollView style={[styles.contractorDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+                    {sortedContractors.map((c, idx) => {
+                      const isBestMatch = c.category === bestMatchCategory;
+                      const isFirstOther = idx > 0 && sortedContractors[idx - 1]?.category === bestMatchCategory && c.category !== bestMatchCategory;
+                      const catCol = CATEGORY_COLORS[c.category] ?? '#78716C';
+                      return (
+                        <View key={c.id}>
+                          {isFirstOther && (
+                            <View style={[styles.contractorDividerRow, { borderTopColor: colors.divider }]}>
+                              <Text style={[styles.contractorDividerText, { color: colors.textTertiary }]}>Other contractors</Text>
+                            </View>
+                          )}
+                          <TouchableOpacity
+                            style={[styles.contractorOption, { borderBottomColor: colors.divider }]}
+                            onPress={() => handleAssignContractor(c.id)}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.contractorOptionNameRow}>
+                                <Text style={[styles.contractorOptionName, { color: colors.text }]}>
+                                  {c.firstName} {c.lastName}
+                                </Text>
+                                {isBestMatch && (
+                                  <View style={[styles.bestMatchBadge, { backgroundColor: colors.accentLight }]}>
+                                    <Star size={9} color={colors.accent} strokeWidth={2.5} />
+                                    <Text style={[styles.bestMatchText, { color: colors.accent }]}>Best match</Text>
+                                  </View>
+                                )}
+                              </View>
+                              {c.company ? (
+                                <Text style={[styles.contractorOptionCompany, { color: colors.textTertiary }]}>{c.company}</Text>
+                              ) : null}
+                            </View>
+                            <View style={[styles.contractorCatBadge, { backgroundColor: catCol + '14' }]}>
+                              <Text style={[styles.contractorCatText, { color: catCol }]}>
+                                {c.category.replace('_', ' ')}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            ) : contractors.length === 0 ? (
+              <TouchableOpacity
+                style={[styles.assignBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => router.push('/contractors' as never)}
+              >
+                <Text style={[styles.assignBtnText, { color: colors.textTertiary }]}>Add contractors first</Text>
+                <Wrench size={14} color={colors.textTertiary} strokeWidth={2} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.noContractorText, { color: colors.textTertiary }]}>Not assigned</Text>
+            )}
+          </View>
 
           <View style={styles.actionRow}>
             {nextStatus && (
@@ -394,6 +587,17 @@ export default function RequestDetailScreen() {
           <Send size={16} color={messageText.trim() ? colors.textInverse : colors.textTertiary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
+
+      <Modal visible={!!viewingImage} transparent animationType="fade">
+        <View style={styles.imageModalOverlay}>
+          <TouchableOpacity style={styles.imageModalClose} onPress={() => setViewingImage(null)}>
+            <X size={24} color="#FFFFFF" strokeWidth={2} />
+          </TouchableOpacity>
+          {viewingImage && (
+            <Image source={{ uri: viewingImage }} style={styles.imageModalFull} contentFit="contain" />
+          )}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -453,6 +657,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 14,
   },
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  mediaThumbnailWrap: {
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  mediaThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
+  },
   metaRow: {
     flexDirection: 'row',
     gap: 20,
@@ -497,6 +716,141 @@ const styles = StyleSheet.create({
   },
   tenantBannerSub: {
     fontSize: 12,
+  },
+  contractorSection: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  contractorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  contractorHeaderText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  assignedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  assignedInfo: {
+    flex: 1,
+  },
+  assignedName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  assignedCompany: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  contractorStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  contractorStatusText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
+  unassignBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 10,
+    gap: 5,
+  },
+  unassignBtnText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  assignBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 6,
+  },
+  assignBtnText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  noContractorText: {
+    fontSize: 13,
+    fontStyle: 'italic' as const,
+  },
+  contractorDropdown: {
+    maxHeight: 240,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  contractorOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    gap: 10,
+  },
+  contractorOptionNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  contractorOptionName: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+  },
+  contractorOptionCompany: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  bestMatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  bestMatchText: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+  },
+  contractorCatBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  contractorCatText: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    textTransform: 'capitalize' as const,
+  },
+  contractorDividerRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderTopWidth: 0.5,
+  },
+  contractorDividerText: {
+    fontSize: 11,
+    fontWeight: '500' as const,
   },
   actionRow: {
     gap: 8,
@@ -694,5 +1048,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageModalFull: {
+    width: '100%',
+    height: '80%',
   },
 });

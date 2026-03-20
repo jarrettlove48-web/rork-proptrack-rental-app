@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, MapPin, ChevronRight, Plus, Wrench, MessageCircle, DollarSign, UserPlus, Activity, Zap } from 'lucide-react-native';
+import { Building2, MapPin, ChevronRight, Plus, Wrench, MessageCircle, DollarSign, UserPlus, Activity, Zap, HardHat } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -70,6 +70,9 @@ export default function PropertiesScreen() {
         return <DollarSign size={13} color={colors.warning} strokeWidth={2} />;
       case 'tenant_invited':
         return <UserPlus size={13} color={colors.success} strokeWidth={2} />;
+      case 'contractor_added':
+      case 'contractor_assigned':
+        return <HardHat size={13} color={colors.accent} strokeWidth={2} />;
       default:
         return <Activity size={13} color={colors.textTertiary} strokeWidth={2} />;
     }
@@ -192,6 +195,10 @@ export default function PropertiesScreen() {
                       if (activity.relatedPropertyId) router.push({ pathname: '/(tabs)/(properties)/[id]', params: { id: activity.relatedPropertyId } } as never);
                     } else if (activity.type === 'expense_added') {
                       router.push('/(tabs)/expenses' as never);
+                    } else if (activity.type === 'contractor_added') {
+                      router.push('/contractors' as never);
+                    } else if (activity.type === 'contractor_assigned') {
+                      if (activity.relatedId) router.push({ pathname: '/request-detail', params: { id: activity.relatedId } } as never);
                     }
                   }}
                   activeOpacity={activity.relatedId || activity.relatedPropertyId ? 0.7 : 1}

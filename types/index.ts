@@ -1,5 +1,7 @@
 export type RequestCategory = 'plumbing' | 'electrical' | 'hvac' | 'appliance' | 'other';
 export type RequestStatus = 'open' | 'in_progress' | 'resolved';
+export type ContractorCategory = 'plumber' | 'electrician' | 'general_contractor' | 'landscaper' | 'painter' | 'roofer' | 'hvac_tech' | 'other';
+export type ContractorStatus = 'pending' | 'accepted' | 'declined';
 
 export interface Property {
   id: string;
@@ -40,6 +42,35 @@ export interface MaintenanceRequest {
   propertyName: string;
   serviceDate?: string;
   requestedDate?: string;
+  assignedContractorId?: string | null;
+  contractorStatus?: ContractorStatus | null;
+}
+
+export interface Contractor {
+  id: string;
+  ownerId: string;
+  firstName: string;
+  lastName: string;
+  company: string | null;
+  website: string | null;
+  category: ContractorCategory;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  inviteCode: string;
+  userId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestMedia {
+  id: string;
+  requestId: string;
+  mediaUrl: string;
+  mediaType: string;
+  uploadedBy: string | null;
+  createdAt: string;
 }
 
 export interface Message {
@@ -69,7 +100,7 @@ export interface Expense {
 
 export interface ActivityItem {
   id: string;
-  type: 'request_created' | 'request_updated' | 'message_sent' | 'property_added' | 'unit_added' | 'expense_added' | 'tenant_invited';
+  type: 'request_created' | 'request_updated' | 'message_sent' | 'property_added' | 'unit_added' | 'expense_added' | 'tenant_invited' | 'contractor_added' | 'contractor_assigned';
   title: string;
   subtitle: string;
   timestamp: string;
@@ -146,4 +177,23 @@ export const STATUS_LABELS: Record<RequestStatus, string> = {
   open: 'Open',
   in_progress: 'In Progress',
   resolved: 'Resolved',
+};
+
+export const CONTRACTOR_CATEGORIES: { key: ContractorCategory; label: string }[] = [
+  { key: 'plumber', label: 'Plumber' },
+  { key: 'electrician', label: 'Electrician' },
+  { key: 'general_contractor', label: 'General Contractor' },
+  { key: 'landscaper', label: 'Landscaper' },
+  { key: 'painter', label: 'Painter' },
+  { key: 'roofer', label: 'Roofer' },
+  { key: 'hvac_tech', label: 'HVAC Tech' },
+  { key: 'other', label: 'Other' },
+];
+
+export const REQUEST_TO_CONTRACTOR_CATEGORY: Record<RequestCategory, ContractorCategory> = {
+  plumbing: 'plumber',
+  electrical: 'electrician',
+  hvac: 'hvac_tech',
+  appliance: 'general_contractor',
+  other: 'other',
 };

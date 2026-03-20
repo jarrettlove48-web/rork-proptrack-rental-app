@@ -3,6 +3,7 @@ export type PlanTier = 'starter' | 'essential' | 'pro';
 export interface TierLimits {
   maxProperties: number;
   maxUnits: number;
+  maxContractors: number;
   expenseTracking: boolean;
   advancedAnalytics: boolean;
   bulkTenantManagement: boolean;
@@ -12,6 +13,7 @@ export const TIER_LIMITS: Record<PlanTier, TierLimits> = {
   starter: {
     maxProperties: 1,
     maxUnits: 3,
+    maxContractors: 0,
     expenseTracking: false,
     advancedAnalytics: false,
     bulkTenantManagement: false,
@@ -19,6 +21,7 @@ export const TIER_LIMITS: Record<PlanTier, TierLimits> = {
   essential: {
     maxProperties: 5,
     maxUnits: 15,
+    maxContractors: 5,
     expenseTracking: true,
     advancedAnalytics: false,
     bulkTenantManagement: false,
@@ -26,6 +29,7 @@ export const TIER_LIMITS: Record<PlanTier, TierLimits> = {
   pro: {
     maxProperties: Infinity,
     maxUnits: Infinity,
+    maxContractors: Infinity,
     expenseTracking: true,
     advancedAnalytics: true,
     bulkTenantManagement: true,
@@ -52,6 +56,18 @@ export function canAddUnit(plan: PlanTier, currentCount: number): boolean {
 
 export function canTrackExpenses(plan: PlanTier): boolean {
   return TIER_LIMITS[plan].expenseTracking;
+}
+
+export function canAddContractor(plan: PlanTier, currentCount: number): boolean {
+  return currentCount < TIER_LIMITS[plan].maxContractors;
+}
+
+export function getContractorLimitMessage(plan: PlanTier): string {
+  if (plan === 'starter') {
+    return 'Contractors are available on the Essential plan and above. Upgrade to start managing your preferred contractors.';
+  }
+  const limit = TIER_LIMITS[plan].maxContractors;
+  return `You've reached your ${limit} contractor limit on the ${PLAN_NAMES[plan]} plan. Upgrade to Pro for unlimited contractors.`;
 }
 
 export function getUpgradeMessage(feature: string, plan: PlanTier): string {

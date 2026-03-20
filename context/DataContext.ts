@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant, Contractor, ContractorCategory, RequestMedia } from '@/types';
 
 function mapProperty(row: Record<string, unknown>): Property {
   return {
@@ -49,6 +49,8 @@ function mapRequest(row: Record<string, unknown>): MaintenanceRequest {
     propertyName: (row.property_name as string) ?? '',
     serviceDate: row.service_date as string | undefined,
     requestedDate: row.requested_date as string | undefined,
+    assignedContractorId: (row.assigned_contractor_id as string | null) ?? null,
+    contractorStatus: (row.contractor_status as MaintenanceRequest['contractorStatus']) ?? null,
   };
 }
 
@@ -113,6 +115,37 @@ function mapTenant(row: Record<string, unknown>): Tenant {
   };
 }
 
+function mapContractor(row: Record<string, unknown>): Contractor {
+  return {
+    id: row.id as string,
+    ownerId: row.owner_id as string,
+    firstName: row.first_name as string,
+    lastName: row.last_name as string,
+    company: (row.company as string | null) ?? null,
+    website: (row.website as string | null) ?? null,
+    category: row.category as Contractor['category'],
+    phone: (row.phone as string | null) ?? null,
+    email: (row.email as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    inviteCode: (row.invite_code as string) ?? '',
+    userId: (row.user_id as string | null) ?? null,
+    isActive: (row.is_active as boolean) ?? true,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapRequestMedia(row: Record<string, unknown>): RequestMedia {
+  return {
+    id: row.id as string,
+    requestId: row.request_id as string,
+    mediaUrl: row.media_url as string,
+    mediaType: (row.media_type as string) ?? 'image',
+    uploadedBy: (row.uploaded_by as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
 function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
   return {
     id: row.id as string,
@@ -159,6 +192,7 @@ export const [DataProvider, useData] = createContextHook(() => {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [contractors, setContractors] = useState<Contractor[]>([]);
 
   const propertiesQuery = useQuery({
     queryKey: ['properties', userId],
@@ -312,6 +346,25 @@ export const [DataProvider, useData] = createContextHook(() => {
     enabled: !!userId,
   });
 
+  const contractorsQuery = useQuery({
+    queryKey: ['contractors', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      console.log('[Data] Fetching contractors...');
+      const { data, error } = await supabase
+        .from('contractors')
+        .select('*')
+        .eq('is_active', true)
+        .order('first_name');
+      if (error) {
+        console.log('[Data] Contractors fetch error:', error.message);
+        throw error;
+      }
+      return (data ?? []).map(mapContractor);
+    },
+    enabled: !!userId,
+  });
+
   const calendarEventsQuery = useQuery({
     queryKey: ['calendarEvents', userId],
     queryFn: async () => {
@@ -366,6 +419,10 @@ export const [DataProvider, useData] = createContextHook(() => {
   useEffect(() => {
     if (tenantsQuery.data) setTenants(tenantsQuery.data);
   }, [tenantsQuery.data]);
+
+  useEffect(() => {
+    if (contractorsQuery.data) setContractors(contractorsQuery.data);
+  }, [contractorsQuery.data]);
 
   useEffect(() => {
     if (!userId) return;
@@ -827,6 +884,117 @@ export const [DataProvider, useData] = createContextHook(() => {
     void queryClient.invalidateQueries({ queryKey: ['tenants', userId] });
   }, [userId, queryClient]);
 
+  const addContractor = useCallback(async (data: {
+    firstName: string;
+    lastName: string;
+    category: ContractorCategory;
+    company?: string;
+    website?: string;
+    phone?: string;
+    email?: string;
+    notes?: string;
+  }) => {
+    if (!userId) return null;
+    console.log('[Data] Adding contractor:', data.firstName, data.lastName);
+    const { data: inserted, error } = await supabase
+      .from('contractors')
+      .insert({
+        first_name: data.firstName,
+        last_name: data.lastName,
+        category: data.category,
+        company: data.company || null,
+        website: data.website || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        notes: data.notes || null,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.log('[Data] Add contractor error:', error.message);
+      return null;
+    }
+    const newContractor = mapContractor(inserted);
+    void queryClient.invalidateQueries({ queryKey: ['contractors', userId] });
+    void addActivityRecord({
+      type: 'contractor_added',
+      title: 'Contractor added',
+      subtitle: `${data.firstName} ${data.lastName}${data.company ? ` — ${data.company}` : ''}`,
+      relatedId: newContractor.id,
+    });
+    return newContractor;
+  }, [userId, queryClient, addActivityRecord]);
+
+  const updateContractor = useCallback(async (contractorId: string, updates: Partial<{
+    first_name: string;
+    last_name: string;
+    category: ContractorCategory;
+    company: string | null;
+    website: string | null;
+    phone: string | null;
+    email: string | null;
+    notes: string | null;
+  }>) => {
+    if (!userId) return;
+    console.log('[Data] Updating contractor:', contractorId);
+    const { error } = await supabase.from('contractors').update(updates).eq('id', contractorId);
+    if (error) console.log('[Data] Update contractor error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['contractors', userId] });
+  }, [userId, queryClient]);
+
+  const removeContractor = useCallback(async (contractorId: string) => {
+    if (!userId) return;
+    console.log('[Data] Removing contractor:', contractorId);
+    await supabase.from('contractors').update({ is_active: false }).eq('id', contractorId);
+    void queryClient.invalidateQueries({ queryKey: ['contractors', userId] });
+  }, [userId, queryClient]);
+
+  const assignContractor = useCallback(async (requestId: string, contractorId: string) => {
+    if (!userId) return;
+    console.log('[Data] Assigning contractor:', contractorId, 'to request:', requestId);
+    const { error } = await supabase.from('maintenance_requests').update({
+      assigned_contractor_id: contractorId,
+      contractor_status: 'pending',
+      updated_at: new Date().toISOString(),
+    }).eq('id', requestId);
+    if (error) console.log('[Data] Assign contractor error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+    const contractor = contractors.find(c => c.id === contractorId);
+    const req = requests.find(r => r.id === requestId);
+    void addActivityRecord({
+      type: 'contractor_assigned',
+      title: 'Contractor assigned',
+      subtitle: `${contractor?.firstName ?? ''} ${contractor?.lastName ?? ''} → ${req?.propertyName ?? ''} ${req?.unitLabel ?? ''}`,
+      relatedId: requestId,
+    });
+  }, [userId, queryClient, contractors, requests, addActivityRecord]);
+
+  const unassignContractor = useCallback(async (requestId: string) => {
+    if (!userId) return;
+    console.log('[Data] Unassigning contractor from request:', requestId);
+    const { error } = await supabase.from('maintenance_requests').update({
+      assigned_contractor_id: null,
+      contractor_status: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', requestId);
+    if (error) console.log('[Data] Unassign contractor error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+  }, [userId, queryClient]);
+
+  const getRequestMedia = useCallback(async (requestId: string): Promise<RequestMedia[]> => {
+    console.log('[Data] Fetching media for request:', requestId);
+    const { data, error } = await supabase
+      .from('request_media')
+      .select('*')
+      .eq('request_id', requestId)
+      .order('created_at');
+    if (error) {
+      console.log('[Data] Request media fetch error:', error.message);
+      return [];
+    }
+    return (data ?? []).map(mapRequestMedia);
+  }, []);
+
   const openRequestCount = useMemo(() => {
     return requests.filter(r => r.status !== 'resolved').length;
   }, [requests]);
@@ -887,6 +1055,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['activities', userId] }),
       queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] }),
       queryClient.invalidateQueries({ queryKey: ['tenants', userId] }),
+      queryClient.invalidateQueries({ queryKey: ['contractors', userId] }),
       queryClient.invalidateQueries({ queryKey: ['profile', userId] }),
     ]);
   }, [queryClient, userId]);
@@ -900,6 +1069,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     activities,
     calendarEvents,
     tenants,
+    contractors,
     recentActivities,
     profile,
     isLoading,
@@ -922,6 +1092,12 @@ export const [DataProvider, useData] = createContextHook(() => {
     addTenant,
     moveTenantOut,
     updateTenant,
+    addContractor,
+    updateContractor,
+    removeContractor,
+    assignContractor,
+    unassignContractor,
+    getRequestMedia,
     getUnitsForProperty,
     getRequestsForProperty,
     getRequestsForUnit,
@@ -933,11 +1109,12 @@ export const [DataProvider, useData] = createContextHook(() => {
     totalExpenses,
     refetchAll,
   }), [
-    properties, units, requests, messages, expenses, activities, calendarEvents, tenants, recentActivities,
+    properties, units, requests, messages, expenses, activities, calendarEvents, tenants, contractors, recentActivities,
     profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
     updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
     addCalendarEvent, deleteCalendarEvent, addTenant, moveTenantOut, updateTenant,
+    addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia,
     getUnitsForProperty, getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, getTenantsForUnit, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,

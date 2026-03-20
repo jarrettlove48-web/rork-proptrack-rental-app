@@ -88,6 +88,7 @@ function RootLayoutNav() {
       <Stack.Screen name="calendar" options={{ title: "Calendar" }} />
       <Stack.Screen name="notification-settings" options={{ title: "Notifications" }} />
       <Stack.Screen name="bulk-tenants" options={{ title: "Manage Tenants" }} />
+      <Stack.Screen name="contractors" options={{ title: "Contractors" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

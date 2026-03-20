@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut, BarChart3, Lock, Users, CreditCard } from 'lucide-react-native';
+import { User, Mail, Phone, DollarSign, Receipt, Check, Sun, Moon, Bell, Shield, HelpCircle, ChevronRight, Crown, Zap, ArrowUpRight, LogOut, BarChart3, Lock, Users, CreditCard, Wrench } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -75,6 +75,7 @@ export default function AccountScreen() {
     },
   });
 
+  const isStarter = !isPro && !isEssential;
   const planLabel = isPro ? 'Pro' : isEssential ? 'Essential' : 'Starter';
   const planColor = isPro ? '#D4883A' : isEssential ? colors.primary : colors.textTertiary;
 
@@ -352,6 +353,19 @@ export default function AccountScreen() {
             <Users size={15} color={isPro ? colors.primary : colors.textTertiary} strokeWidth={2} />
             <Text style={[styles.settingText, { color: colors.text }]}>Manage Tenants</Text>
             {!isPro && <Lock size={13} color={colors.textTertiary} strokeWidth={2} />}
+            <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
+          </TouchableOpacity>
+          <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/contractors' as never);
+            }}
+          >
+            <Wrench size={15} color={isStarter ? colors.textTertiary : colors.accent} strokeWidth={2} />
+            <Text style={[styles.settingText, { color: colors.text }]}>Contractors</Text>
+            {isStarter && <Lock size={13} color={colors.textTertiary} strokeWidth={2} />}
             <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
           </TouchableOpacity>
           <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
