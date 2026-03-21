@@ -27,6 +27,12 @@ export interface Unit {
   tenantPortalActive?: boolean;
 }
 
+export interface ProposedTimeSlot {
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+
 export interface MaintenanceRequest {
   id: string;
   unitId: string;
@@ -44,6 +50,9 @@ export interface MaintenanceRequest {
   requestedDate?: string;
   assignedContractorId?: string | null;
   contractorStatus?: ContractorStatus | null;
+  proposedTimes?: ProposedTimeSlot[] | null;
+  confirmedTime?: string | null;
+  confirmedBy?: string | null;
 }
 
 export interface Contractor {

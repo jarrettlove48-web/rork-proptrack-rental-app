@@ -14,15 +14,167 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Home, Wrench, MessageCircle, Plus, AlertCircle, Clock, CheckCircle, Send, User, LogOut, ChevronRight } from 'lucide-react-native';
+import { Home, Wrench, MessageCircle, Plus, AlertCircle, Clock, CheckCircle, Send, User, LogOut, ChevronRight, CalendarClock, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTenant } from '@/context/TenantContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { formatDate, getStatusColor } from '@/utils/helpers';
-import { REQUEST_CATEGORIES, STATUS_LABELS, RequestCategory, MaintenanceRequest } from '@/types';
+import { REQUEST_CATEGORIES, STATUS_LABELS, RequestCategory, MaintenanceRequest, ProposedTimeSlot } from '@/types';
 
 type PortalTab = 'home' | 'requests' | 'messages';
+
+function generateTimeOptions(): string[] {
+  const times: string[] = [];
+  for (let h = 7; h <= 20; h++) {
+    times.push(`${String(h).padStart(2, '0')}:00`);
+    times.push(`${String(h).padStart(2, '0')}:30`);
+  }
+  return times;
+}
+
+const TIME_OPTIONS = generateTimeOptions();
+
+function AddSlotPicker({ colors, onAdd }: { colors: Record<string, string>; onAdd: (slot: ProposedTimeSlot) => void }) {
+  const [showForm, setShowForm] = React.useState(false);
+  const [date, setDate] = React.useState('');
+  const [startTime, setStartTime] = React.useState('09:00');
+  const [endTime, setEndTime] = React.useState('10:00');
+  const [showDateList, setShowDateList] = React.useState(false);
+  const [showStartList, setShowStartList] = React.useState(false);
+  const [showEndList, setShowEndList] = React.useState(false);
+
+  if (!showForm) {
+    return (
+      <TouchableOpacity
+        style={[slotPickerStyles.addBtn, { borderColor: colors.border }]}
+        onPress={() => setShowForm(true)}
+      >
+        <Plus size={14} color={colors.primary} strokeWidth={2} />
+        <Text style={[slotPickerStyles.addBtnText, { color: colors.primary }]}>Add preferred time</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  const dateOptions = Array.from({ length: 21 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i + 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return { val, label };
+  });
+
+  return (
+    <View style={[slotPickerStyles.form, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+      <TouchableOpacity
+        style={[slotPickerStyles.picker, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => { setShowDateList(!showDateList); setShowStartList(false); setShowEndList(false); }}
+      >
+        <Text style={[slotPickerStyles.pickerText, { color: date ? colors.text : colors.textTertiary }]}>
+          {date ? dateOptions.find(d => d.val === date)?.label ?? date : 'Select date'}
+        </Text>
+      </TouchableOpacity>
+      {showDateList && (
+        <ScrollView style={[slotPickerStyles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+          {dateOptions.map(d => (
+            <TouchableOpacity
+              key={d.val}
+              style={[slotPickerStyles.dropdownItem, { borderBottomColor: colors.divider }, date === d.val && { backgroundColor: colors.primaryFaint }]}
+              onPress={() => { setDate(d.val); setShowDateList(false); }}
+            >
+              <Text style={[slotPickerStyles.dropdownText, { color: colors.text }, date === d.val && { color: colors.primary, fontWeight: '600' as const }]}>{d.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+      <View style={slotPickerStyles.timeRow}>
+        <View style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={[slotPickerStyles.picker, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => { setShowStartList(!showStartList); setShowDateList(false); setShowEndList(false); }}
+          >
+            <Text style={[slotPickerStyles.pickerText, { color: colors.text }]}>{startTime}</Text>
+          </TouchableOpacity>
+          {showStartList && (
+            <ScrollView style={[slotPickerStyles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+              {TIME_OPTIONS.map(t => (
+                <TouchableOpacity
+                  key={`s-${t}`}
+                  style={[slotPickerStyles.dropdownItem, { borderBottomColor: colors.divider }, startTime === t && { backgroundColor: colors.primaryFaint }]}
+                  onPress={() => { setStartTime(t); setShowStartList(false); }}
+                >
+                  <Text style={[slotPickerStyles.dropdownText, { color: colors.text }, startTime === t && { color: colors.primary, fontWeight: '600' as const }]}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+        <Text style={[slotPickerStyles.timeSep, { color: colors.textTertiary }]}>–</Text>
+        <View style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={[slotPickerStyles.picker, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => { setShowEndList(!showEndList); setShowDateList(false); setShowStartList(false); }}
+          >
+            <Text style={[slotPickerStyles.pickerText, { color: colors.text }]}>{endTime}</Text>
+          </TouchableOpacity>
+          {showEndList && (
+            <ScrollView style={[slotPickerStyles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]} nestedScrollEnabled>
+              {TIME_OPTIONS.map(t => (
+                <TouchableOpacity
+                  key={`e-${t}`}
+                  style={[slotPickerStyles.dropdownItem, { borderBottomColor: colors.divider }, endTime === t && { backgroundColor: colors.primaryFaint }]}
+                  onPress={() => { setEndTime(t); setShowEndList(false); }}
+                >
+                  <Text style={[slotPickerStyles.dropdownText, { color: colors.text }, endTime === t && { color: colors.primary, fontWeight: '600' as const }]}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+      <View style={slotPickerStyles.formActions}>
+        <TouchableOpacity
+          style={[slotPickerStyles.cancelBtn, { borderColor: colors.border }]}
+          onPress={() => setShowForm(false)}
+        >
+          <Text style={[slotPickerStyles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[slotPickerStyles.confirmBtn, { backgroundColor: colors.primary }, !date && { opacity: 0.4 }]}
+          onPress={() => {
+            if (!date) return;
+            onAdd({ date, startTime, endTime });
+            setShowForm(false);
+            setDate('');
+            setStartTime('09:00');
+            setEndTime('10:00');
+          }}
+          disabled={!date}
+        >
+          <Text style={slotPickerStyles.confirmText}>Add</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const slotPickerStyles = StyleSheet.create({
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', gap: 6, marginTop: 8 },
+  addBtnText: { fontSize: 13, fontWeight: '600' as const },
+  form: { borderRadius: 12, padding: 12, marginTop: 8, borderWidth: 1, gap: 8 },
+  picker: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
+  pickerText: { fontSize: 14 },
+  dropdown: { maxHeight: 150, borderRadius: 10, borderWidth: 1, marginTop: 4, overflow: 'hidden' },
+  dropdownItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 0.5 },
+  dropdownText: { fontSize: 13 },
+  timeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  timeSep: { paddingTop: 12, fontSize: 14 },
+  formActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1 },
+  cancelText: { fontSize: 13, fontWeight: '600' as const },
+  confirmBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  confirmText: { fontSize: 13, fontWeight: '600' as const, color: '#FFFFFF' },
+});
 
 export default function TenantPortalScreen() {
   const { unit, property, requests, openRequests, resolvedRequests, submitRequest, sendMessage, getMessagesForRequest, logout, refetchAll } = useTenant();
@@ -37,6 +189,7 @@ export default function TenantPortalScreen() {
   const [selectedCategory, setSelectedCategory] = useState<RequestCategory | null>(null);
   const [requestDescription, setRequestDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [proposedSlots, setProposedSlots] = useState<ProposedTimeSlot[]>([]);
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
@@ -68,18 +221,21 @@ export default function TenantPortalScreen() {
     }
     setIsSubmitting(true);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const slotsToSend = proposedSlots;
     const result = await submitRequest({
       category: selectedCategory,
       description: requestDescription.trim(),
+      proposedTimes: slotsToSend.length > 0 ? slotsToSend : undefined,
     });
     setIsSubmitting(false);
     if (result) {
       Alert.alert('Request Submitted', 'Your maintenance request has been sent to your landlord.');
       setSelectedCategory(null);
       setRequestDescription('');
+      setProposedSlots([]);
       handleTabChange('home');
     }
-  }, [selectedCategory, requestDescription, submitRequest, handleTabChange]);
+  }, [selectedCategory, requestDescription, proposedSlots, submitRequest, handleTabChange]);
 
   const handleSendMessage = useCallback(async () => {
     if (!messageText.trim() || !activeRequestId) return;
@@ -184,7 +340,18 @@ export default function TenantPortalScreen() {
                   <Text style={styles.requestEmoji}>{catInfo?.icon}</Text>
                   <View style={styles.requestInfo}>
                     <Text style={[styles.requestTitle, { color: colors.text }]} numberOfLines={1}>{req.description}</Text>
-                    <Text style={[styles.requestMeta, { color: colors.textTertiary }]}>{formatDate(req.createdAt)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <Text style={[styles.requestMeta, { color: colors.textTertiary }]}>{formatDate(req.createdAt)}</Text>
+                      {req.confirmedTime ? (
+                        <View style={[styles.statusBadge, { backgroundColor: '#05966914' }]}>
+                          <Text style={[styles.statusBadgeText, { color: '#059669' }]}>Scheduled</Text>
+                        </View>
+                      ) : req.proposedTimes && req.proposedTimes.length > 0 ? (
+                        <View style={[styles.statusBadge, { backgroundColor: '#D9770614' }]}>
+                          <Text style={[styles.statusBadgeText, { color: '#D97706' }]}>Waiting</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
                 <View style={[styles.statusTimeline, { backgroundColor: colors.surfaceSecondary }]}>
@@ -274,6 +441,38 @@ export default function TenantPortalScreen() {
           testID="tenant-request-description"
         />
 
+        <View style={styles.slotsSection}>
+          <View style={styles.slotsHeader}>
+            <CalendarClock size={14} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.slotsTitle, { color: colors.textSecondary }]}>Preferred Times (optional)</Text>
+          </View>
+          <Text style={[styles.slotsHint, { color: colors.textTertiary }]}>Add up to 3 time slots for scheduling.</Text>
+          {proposedSlots.map((slot, idx) => (
+            <View key={idx} style={[styles.slotRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <View style={styles.slotInfo}>
+                <Text style={[styles.slotDate, { color: colors.text }]}>
+                  {new Date(slot.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </Text>
+                <Text style={[styles.slotTime, { color: colors.textSecondary }]}>
+                  {slot.startTime} – {slot.endTime}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setProposedSlots(prev => prev.filter((_, i) => i !== idx))}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={14} color={colors.textTertiary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {proposedSlots.length < 3 && (
+            <AddSlotPicker
+              colors={colors}
+              onAdd={(slot: ProposedTimeSlot) => setProposedSlots(prev => [...prev, slot])}
+            />
+          )}
+        </View>
+
         <TouchableOpacity
           style={[
             styles.submitBtn,
@@ -318,8 +517,19 @@ export default function TenantPortalScreen() {
                   {getStatusIcon(req.status)}
                 </View>
                 <View style={styles.requestListBottom}>
-                  <View style={[styles.statusBadge, { backgroundColor: statusColor + '14' }]}>
-                    <Text style={[styles.statusBadgeText, { color: statusColor }]}>{STATUS_LABELS[req.status]}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={[styles.statusBadge, { backgroundColor: statusColor + '14' }]}>
+                      <Text style={[styles.statusBadgeText, { color: statusColor }]}>{STATUS_LABELS[req.status]}</Text>
+                    </View>
+                    {req.confirmedTime ? (
+                      <View style={[styles.statusBadge, { backgroundColor: '#05966914' }]}>
+                        <Text style={[styles.statusBadgeText, { color: '#059669' }]}>Scheduled</Text>
+                      </View>
+                    ) : req.proposedTimes && req.proposedTimes.length > 0 ? (
+                      <View style={[styles.statusBadge, { backgroundColor: '#D9770614' }]}>
+                        <Text style={[styles.statusBadgeText, { color: '#D97706' }]}>{req.proposedTimes.length} times proposed</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={[styles.requestListDate, { color: colors.textTertiary }]}>{formatDate(req.createdAt)}</Text>
                 </View>
@@ -669,4 +879,12 @@ const styles = StyleSheet.create({
   chatInputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, borderTopWidth: 0.5, gap: 8 },
   chatInput: { flex: 1, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100 },
   chatSendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  slotsSection: { marginBottom: 16 },
+  slotsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  slotsTitle: { fontSize: 13, fontWeight: '600' as const },
+  slotsHint: { fontSize: 12, marginBottom: 6 },
+  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10, padding: 10, borderWidth: 1, marginTop: 6 },
+  slotInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  slotDate: { fontSize: 13, fontWeight: '600' as const },
+  slotTime: { fontSize: 13 },
 });

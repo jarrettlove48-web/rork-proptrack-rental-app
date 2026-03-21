@@ -13,7 +13,7 @@ import {
   Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, Calendar, ChevronDown, X, Wrench, UserCheck, UserX, Star } from 'lucide-react-native';
+import { AlertCircle, Clock, CheckCircle, ArrowRight, DollarSign, Send, Calendar, ChevronDown, X, Wrench, UserCheck, UserX, Star, CalendarClock } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
@@ -249,6 +249,42 @@ export default function RequestDetailScreen() {
               <Text style={[styles.metaValue, { color: colors.text }]}>{formatDate(request.updatedAt)}</Text>
             </View>
           </View>
+
+          {(request.confirmedTime || (request.proposedTimes && request.proposedTimes.length > 0)) && (
+            <View style={[styles.schedulingSection, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <View style={styles.schedulingHeader}>
+                <CalendarClock size={14} color={request.confirmedTime ? '#059669' : '#D97706'} strokeWidth={2} />
+                <Text style={[styles.schedulingHeaderText, { color: colors.textSecondary }]}>Scheduling</Text>
+              </View>
+              {request.confirmedTime ? (
+                <View style={[styles.schedulingConfirmed, { backgroundColor: '#05966914' }]}>
+                  <CheckCircle size={14} color="#059669" strokeWidth={2} />
+                  <Text style={[styles.schedulingConfirmedText, { color: '#059669' }]}>
+                    Scheduled: {new Date(request.confirmedTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(request.confirmedTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  </Text>
+                </View>
+              ) : request.proposedTimes && request.proposedTimes.length > 0 ? (
+                <View>
+                  <View style={[styles.schedulingPending, { backgroundColor: '#D9770614' }]}>
+                    <Clock size={13} color="#D97706" strokeWidth={2} />
+                    <Text style={[styles.schedulingPendingText, { color: '#D97706' }]}>
+                      {request.proposedTimes.length} time{request.proposedTimes.length > 1 ? 's' : ''} proposed — waiting for contractor
+                    </Text>
+                  </View>
+                  {request.proposedTimes.map((slot, idx) => (
+                    <View key={idx} style={[styles.proposedSlotRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.proposedSlotDate, { color: colors.text }]}>
+                        {new Date(slot.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                      <Text style={[styles.proposedSlotTime, { color: colors.textSecondary }]}>
+                        {slot.startTime} – {slot.endTime}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          )}
 
           <View style={[styles.datesSection, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             <View style={styles.dateField}>
@@ -1070,5 +1106,63 @@ const styles = StyleSheet.create({
   imageModalFull: {
     width: '100%',
     height: '80%',
+  },
+  schedulingSection: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  schedulingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  schedulingHeaderText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  schedulingConfirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    padding: 12,
+  },
+  schedulingConfirmedText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  schedulingPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  schedulingPendingText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+  proposedSlotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  proposedSlotDate: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  proposedSlotTime: {
+    fontSize: 13,
   },
 });

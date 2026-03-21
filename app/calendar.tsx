@@ -58,7 +58,7 @@ function toDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-type EventColorType = 'maintenance' | 'service' | 'requested' | 'lease_end' | 'rent_reminder' | 'move_in' | 'move_out' | 'inspection' | 'other';
+type EventColorType = 'maintenance' | 'service' | 'requested' | 'lease_end' | 'rent_reminder' | 'move_in' | 'move_out' | 'inspection' | 'other' | 'confirmed';
 
 const EVENT_COLORS: Record<EventColorType, string> = {
   maintenance: '#E67E22',
@@ -70,6 +70,7 @@ const EVENT_COLORS: Record<EventColorType, string> = {
   move_out: '#E74C3C',
   inspection: '#9B59B6',
   other: '#95A5A6',
+  confirmed: '#059669',
 };
 
 interface DisplayEvent {
@@ -82,7 +83,7 @@ interface DisplayEvent {
   propertyName: string;
   unitLabel: string;
   tenantName: string;
-  type: 'request_created' | 'service_date' | 'requested_date' | 'lease_end' | 'calendar_event';
+  type: 'request_created' | 'service_date' | 'requested_date' | 'lease_end' | 'calendar_event' | 'confirmed_time';
   request?: MaintenanceRequest;
   calendarEvent?: CalendarEventModel;
   colorType: EventColorType;
@@ -255,6 +256,24 @@ export default function CalendarScreen() {
           type: 'requested_date',
           request: r,
           colorType: 'requested',
+        });
+      }
+      if (r.confirmedTime) {
+        const confirmedDate = new Date(r.confirmedTime);
+        const timeStr = confirmedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        events.push({
+          id: `${r.id}-confirmed`,
+          title: `✅ Scheduled: ${catLabel} - ${r.propertyName}`,
+          description: `Confirmed appointment at ${timeStr}: ${r.description}`,
+          date: confirmedDate,
+          category: r.category,
+          status: r.status,
+          propertyName: r.propertyName,
+          unitLabel: r.unitLabel,
+          tenantName: r.tenantName,
+          type: 'confirmed_time',
+          request: r,
+          colorType: 'confirmed',
         });
       }
     }
@@ -780,6 +799,8 @@ export default function CalendarScreen() {
               ? '📅 Requested'
               : event.type === 'lease_end'
               ? '📋 Lease End'
+              : event.type === 'confirmed_time'
+              ? '✅ Scheduled'
               : event.type === 'calendar_event'
               ? CALENDAR_EVENT_TYPES.find(t => t.key === event.calendarEvent?.eventType)?.label ?? 'Event'
               : null;

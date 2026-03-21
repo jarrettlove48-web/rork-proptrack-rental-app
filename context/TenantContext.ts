@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, ProposedTimeSlot } from '@/types';
 
 const TENANT_UNIT_KEY = 'proptrack_tenant_unit';
 
@@ -55,6 +55,9 @@ function mapRequest(row: Record<string, unknown>): MaintenanceRequest {
     tenantName: (row.tenant_name as string) ?? '',
     unitLabel: (row.unit_label as string) ?? '',
     propertyName: (row.property_name as string) ?? '',
+    proposedTimes: (row.proposed_times as ProposedTimeSlot[] | null) ?? null,
+    confirmedTime: (row.confirmed_time as string | null) ?? null,
+    confirmedBy: (row.confirmed_by as string | null) ?? null,
   };
 }
 
@@ -395,6 +398,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     category: MaintenanceRequest['category'];
     description: string;
     photoUri?: string;
+    proposedTimes?: ProposedTimeSlot[];
   }): Promise<MaintenanceRequest | null> => {
     if (!userId || !unit || !property) return null;
     console.log('[Tenant] Submitting request:', data.category);
@@ -422,6 +426,7 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
         description: data.description,
         status: 'open',
         photo_uri: data.photoUri ?? null,
+        proposed_times: data.proposedTimes && data.proposedTimes.length > 0 ? JSON.stringify(data.proposedTimes) : null,
         tenant_name: unit.tenantName,
         unit_label: unit.label,
         property_name: property.name,

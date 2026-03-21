@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant, Contractor, ContractorCategory, RequestMedia } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant, Contractor, ContractorCategory, RequestMedia, ProposedTimeSlot } from '@/types';
 
 function mapProperty(row: Record<string, unknown>): Property {
   return {
@@ -995,6 +995,19 @@ export const [DataProvider, useData] = createContextHook(() => {
     return (data ?? []).map(mapRequestMedia);
   }, []);
 
+  const confirmTimeSlot = useCallback(async (requestId: string, slot: ProposedTimeSlot) => {
+    if (!userId) return;
+    console.log('[Data] Confirming time slot for request:', requestId, slot);
+    const confirmedTime = new Date(`${slot.date}T${slot.startTime}:00`).toISOString();
+    const { error } = await supabase.from('maintenance_requests').update({
+      confirmed_time: confirmedTime,
+      confirmed_by: userId,
+      updated_at: new Date().toISOString(),
+    }).eq('id', requestId);
+    if (error) console.log('[Data] Confirm time slot error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+  }, [userId, queryClient]);
+
   const openRequestCount = useMemo(() => {
     return requests.filter(r => r.status !== 'resolved').length;
   }, [requests]);
@@ -1098,6 +1111,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     assignContractor,
     unassignContractor,
     getRequestMedia,
+    confirmTimeSlot,
     getUnitsForProperty,
     getRequestsForProperty,
     getRequestsForUnit,
@@ -1114,7 +1128,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
     updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
     addCalendarEvent, deleteCalendarEvent, addTenant, moveTenantOut, updateTenant,
-    addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia,
+    addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia, confirmTimeSlot,
     getUnitsForProperty, getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, getTenantsForUnit, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,
