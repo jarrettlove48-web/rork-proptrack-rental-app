@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Search, X, Plus, AlertCircle, Clock, CheckCircle, CalendarDays } from 'lucide-react-native';
+import { Search, X, Plus, AlertCircle, Clock, CheckCircle, CalendarDays, CalendarClock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -99,6 +99,25 @@ export default function RequestsScreen() {
           </View>
         </View>
         <Text style={[styles.requestDescription, { color: colors.text }]} numberOfLines={2}>{item.description}</Text>
+        {(item.confirmedTime || (item.proposedTimes && item.proposedTimes.length > 0)) && (
+          <View style={styles.schedulingRow}>
+            {item.confirmedTime ? (
+              <View style={[styles.schedulingBadge, { backgroundColor: '#05966914' }]}>
+                <CheckCircle size={11} color="#059669" strokeWidth={2} />
+                <Text style={[styles.schedulingText, { color: '#059669' }]}>
+                  Scheduled: {new Date(item.confirmedTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(item.confirmedTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              </View>
+            ) : item.proposedTimes && item.proposedTimes.length > 0 ? (
+              <View style={[styles.schedulingBadge, { backgroundColor: '#D9770614' }]}>
+                <CalendarClock size={11} color="#D97706" strokeWidth={2} />
+                <Text style={[styles.schedulingText, { color: '#D97706' }]}>
+                  {item.proposedTimes.length} time{item.proposedTimes.length > 1 ? 's' : ''} proposed
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
         <View style={styles.cardBottom}>
           <Text style={[styles.requestMeta, { color: colors.textTertiary }]}>{item.propertyName} · {item.unitLabel}</Text>
           <Text style={[styles.requestTime, { color: colors.textTertiary }]}>{formatDate(item.createdAt)}</Text>
@@ -365,6 +384,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 6,
     fontWeight: '500' as const,
+  },
+  schedulingRow: {
+    marginBottom: 8,
+  },
+  schedulingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 5,
+  },
+  schedulingText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
   },
   emptyState: {
     alignItems: 'center',

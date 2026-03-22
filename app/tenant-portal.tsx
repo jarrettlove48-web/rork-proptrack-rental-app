@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Home, Wrench, MessageCircle, Plus, AlertCircle, Clock, CheckCircle, Send, User, LogOut, ChevronRight, CalendarClock, X } from 'lucide-react-native';
+import { Home, Wrench, MessageCircle, Plus, AlertCircle, Clock, CheckCircle, Send, User, LogOut, ChevronRight, CalendarClock, X, Pencil, Phone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTenant } from '@/context/TenantContext';
 import { useAuth } from '@/context/AuthContext';
@@ -177,7 +177,7 @@ const slotPickerStyles = StyleSheet.create({
 });
 
 export default function TenantPortalScreen() {
-  const { unit, property, requests, openRequests, resolvedRequests, submitRequest, sendMessage, getMessagesForRequest, logout, refetchAll } = useTenant();
+  const { unit, property, requests, openRequests, resolvedRequests, submitRequest, sendMessage, getMessagesForRequest, updateTenantProfile, logout, refetchAll } = useTenant();
   const { signOut } = useAuth();
   const { colors } = useTheme();
 
@@ -193,6 +193,10 @@ export default function TenantPortalScreen() {
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [isSavingInfo, setIsSavingInfo] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -387,6 +391,95 @@ export default function TenantPortalScreen() {
           })}
         </View>
       )}
+
+      <View style={styles.section}>
+        <View style={styles.myInfoHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>My Info</Text>
+          {!isEditingInfo && (
+            <TouchableOpacity
+              onPress={() => {
+                setEditName(unit?.tenantName ?? '');
+                setEditPhone(unit?.tenantPhone ?? '');
+                setIsEditingInfo(true);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Pencil size={14} color={colors.primary} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={[styles.myInfoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {isEditingInfo ? (
+            <>
+              <View style={styles.myInfoField}>
+                <Text style={[styles.myInfoLabel, { color: colors.textTertiary }]}>Name</Text>
+                <TextInput
+                  style={[styles.myInfoInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.text }]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Your name"
+                  placeholderTextColor={colors.textTertiary}
+                  autoFocus
+                />
+              </View>
+              <View style={styles.myInfoField}>
+                <Text style={[styles.myInfoLabel, { color: colors.textTertiary }]}>Phone</Text>
+                <TextInput
+                  style={[styles.myInfoInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.text }]}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="Phone number"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={styles.myInfoActions}>
+                <TouchableOpacity
+                  style={[styles.myInfoCancelBtn, { borderColor: colors.border }]}
+                  onPress={() => setIsEditingInfo(false)}
+                >
+                  <Text style={[styles.myInfoCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.myInfoSaveBtn, { backgroundColor: colors.primary }, isSavingInfo && { opacity: 0.5 }]}
+                  onPress={async () => {
+                    setIsSavingInfo(true);
+                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    await updateTenantProfile({
+                      name: editName.trim() || undefined,
+                      phone: editPhone.trim() || undefined,
+                    });
+                    setIsSavingInfo(false);
+                    setIsEditingInfo(false);
+                  }}
+                  disabled={isSavingInfo}
+                >
+                  <Text style={styles.myInfoSaveText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.myInfoRow}>
+                <User size={14} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.myInfoValue, { color: colors.text }]}>{unit?.tenantName || 'Not set'}</Text>
+              </View>
+              {unit?.tenantPhone ? (
+                <View style={styles.myInfoRow}>
+                  <Phone size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <Text style={[styles.myInfoValue, { color: colors.text }]}>{unit.tenantPhone}</Text>
+                </View>
+              ) : null}
+              {unit?.tenantEmail ? (
+                <View style={styles.myInfoRow}>
+                  <MessageCircle size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <Text style={[styles.myInfoValue, { color: colors.text }]}>{unit.tenantEmail}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      </View>
 
       {requests.length === 0 && (
         <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -887,4 +980,16 @@ const styles = StyleSheet.create({
   slotInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   slotDate: { fontSize: 13, fontWeight: '600' as const },
   slotTime: { fontSize: 13 },
+  myInfoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  myInfoCard: { borderRadius: 16, padding: 16, borderWidth: 1 },
+  myInfoField: { marginBottom: 12 },
+  myInfoLabel: { fontSize: 12, fontWeight: '600' as const, marginBottom: 4, letterSpacing: 0.2 },
+  myInfoInput: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, borderWidth: 1 },
+  myInfoActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  myInfoCancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1 },
+  myInfoCancelText: { fontSize: 13, fontWeight: '600' as const },
+  myInfoSaveBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  myInfoSaveText: { fontSize: 13, fontWeight: '600' as const, color: '#FFFFFF' },
+  myInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  myInfoValue: { fontSize: 14, fontWeight: '500' as const },
 });

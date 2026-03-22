@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
-import { REQUEST_CATEGORIES, STATUS_LABELS, REQUEST_TO_CONTRACTOR_CATEGORY, RequestMedia, ContractorCategory } from '@/types';
+import { REQUEST_CATEGORIES, STATUS_LABELS, REQUEST_TO_CONTRACTOR_CATEGORY, RequestMedia, ContractorCategory, RequestCategory } from '@/types';
 import { formatDate, formatFullDate, getStatusColor, getCategoryColor, getNextStatus, getNextStatusLabel } from '@/utils/helpers';
 
 const CONTRACTOR_STATUS_COLORS: Record<string, string> = {
@@ -41,7 +41,7 @@ const CATEGORY_COLORS: Record<ContractorCategory, string> = {
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { requests, updateRequestStatus, updateRequestDates, getMessagesForRequest, addMessage, profile, contractors, assignContractor, unassignContractor, getRequestMedia } = useData();
+  const { requests, updateRequestStatus, updateRequestDates, updateRequestDescription, updateRequestCategory, getMessagesForRequest, addMessage, profile, contractors, assignContractor, unassignContractor, getRequestMedia } = useData();
   const { colors } = useTheme();
   const [messageText, setMessageText] = useState('');
   const [showServiceDatePicker, setShowServiceDatePicker] = useState(false);
@@ -50,6 +50,9 @@ export default function RequestDetailScreen() {
   const [mediaItems, setMediaItems] = useState<RequestMedia[]>([]);
   const [mediaLoading, setMediaLoading] = useState(true);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [showCategoryEdit, setShowCategoryEdit] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const request = useMemo(() => requests.find(r => r.id === id), [requests, id]);
@@ -207,10 +210,14 @@ export default function RequestDetailScreen() {
       >
         <View style={[styles.requestHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.headerBadges}>
-            <View style={[styles.badge, { backgroundColor: catColor + '14' }]}>
+            <TouchableOpacity
+              style={[styles.badge, { backgroundColor: catColor + '14' }]}
+              onPress={() => isEditable && setShowCategoryEdit(!showCategoryEdit)}
+              activeOpacity={isEditable ? 0.7 : 1}
+            >
               <Text style={styles.badgeEmoji}>{catInfo?.icon}</Text>
               <Text style={[styles.badgeText, { color: catColor }]}>{catInfo?.label}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={[styles.badge, { backgroundColor: statusColor + '14' }]}>
               {getStatusIcon(request.status)}
               <Text style={[styles.badgeText, { color: statusColor }]}>
@@ -218,7 +225,70 @@ export default function RequestDetailScreen() {
               </Text>
             </View>
           </View>
-          <Text style={[styles.requestDescription, { color: colors.text }]}>{request.description}</Text>
+          {showCategoryEdit && isEditable && (
+            <View style={[styles.categoryEditDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {REQUEST_CATEGORIES.map(cat => {
+                const isActive = request.category === cat.key;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    style={[styles.categoryEditOption, { borderBottomColor: colors.divider }, isActive && { backgroundColor: colors.primaryFaint }]}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      void updateRequestCategory(request.id, cat.key as RequestCategory);
+                      setShowCategoryEdit(false);
+                    }}
+                  >
+                    <Text style={styles.categoryEditEmoji}>{cat.icon}</Text>
+                    <Text style={[styles.categoryEditText, { color: colors.text }, isActive && { color: colors.primary, fontWeight: '600' as const }]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          {isEditingDescription ? (
+            <View style={styles.editDescriptionWrap}>
+              <TextInput
+                style={[styles.editDescriptionInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.text }]}
+                value={editDescription}
+                onChangeText={setEditDescription}
+                multiline
+                autoFocus
+                textAlignVertical="top"
+              />
+              <View style={styles.editDescriptionActions}>
+                <TouchableOpacity
+                  style={[styles.editActionBtn, { backgroundColor: colors.surfaceSecondary }]}
+                  onPress={() => setIsEditingDescription(false)}
+                >
+                  <Text style={[styles.editActionText, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editActionBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    if (editDescription.trim() && request) {
+                      void updateRequestDescription(request.id, editDescription.trim());
+                      setIsEditingDescription(false);
+                    }
+                  }}
+                >
+                  <Text style={[styles.editActionText, { color: '#FFFFFF' }]}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                if (isEditable) {
+                  setEditDescription(request.description);
+                  setIsEditingDescription(true);
+                }
+              }}
+              activeOpacity={isEditable ? 0.7 : 1}
+            >
+              <Text style={[styles.requestDescription, { color: colors.text }]}>{request.description}</Text>
+            </TouchableOpacity>
+          )}
 
           {request.photoUri && (
             <TouchableOpacity onPress={() => setViewingImage(request.photoUri ?? null)}>
@@ -1106,6 +1176,53 @@ const styles = StyleSheet.create({
   imageModalFull: {
     width: '100%',
     height: '80%',
+  },
+  editDescriptionWrap: {
+    marginBottom: 14,
+  },
+  editDescriptionInput: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    minHeight: 80,
+    borderWidth: 1,
+    lineHeight: 22,
+  },
+  editDescriptionActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
+  },
+  editActionBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  editActionText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  categoryEditDropdown: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  categoryEditOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 0.5,
+    gap: 8,
+  },
+  categoryEditEmoji: {
+    fontSize: 16,
+  },
+  categoryEditText: {
+    fontSize: 14,
   },
   schedulingSection: {
     borderRadius: 12,

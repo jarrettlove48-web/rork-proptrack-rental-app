@@ -27,6 +27,7 @@ import {
   X,
   ChevronDown,
   Trash2,
+  Pencil,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
@@ -142,7 +143,7 @@ async function addToDeviceCalendar(event: DisplayEvent): Promise<void> {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { requests, units, properties, calendarEvents, tenants, addCalendarEvent, deleteCalendarEvent } = useData();
+  const { requests, units, properties, calendarEvents, tenants, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useData();
   const { colors } = useTheme();
   const today = useMemo(() => new Date(), []);
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -164,6 +165,7 @@ export default function CalendarScreen() {
   const [showUnitPicker, setShowUnitPicker] = useState(false);
   const [showNewDatePicker, setShowNewDatePicker] = useState(false);
   const [isAddingEvent, setIsAddingEvent] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEventModel | null>(null);
 
   const availableUnits = useMemo(() => units.filter(u => u.propertyId === newPropertyId), [units, newPropertyId]);
 
@@ -413,30 +415,62 @@ export default function CalendarScreen() {
     }
     setIsAddingEvent(true);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const result = await addCalendarEvent({
-      title: newTitle.trim(),
-      description: newDescription.trim() || null,
-      eventDate: newEventDate,
-      eventType: newEventType,
-      propertyId: newPropertyId || null,
-      unitId: newUnitId || null,
-    });
-    setIsAddingEvent(false);
-    if (result) {
+
+    if (editingEvent) {
+      await updateCalendarEvent(editingEvent.id, {
+        title: newTitle.trim(),
+        description: newDescription.trim() || null,
+        eventDate: newEventDate,
+        eventType: newEventType,
+        propertyId: newPropertyId || null,
+        unitId: newUnitId || null,
+      });
+      setIsAddingEvent(false);
       setShowAddForm(false);
-      setNewTitle('');
-      setNewDescription('');
-      setNewEventType('maintenance');
-      setNewPropertyId('');
-      setNewUnitId('');
-      setNewEventDate('');
+      setEditingEvent(null);
+    } else {
+      const result = await addCalendarEvent({
+        title: newTitle.trim(),
+        description: newDescription.trim() || null,
+        eventDate: newEventDate,
+        eventType: newEventType,
+        propertyId: newPropertyId || null,
+        unitId: newUnitId || null,
+      });
+      setIsAddingEvent(false);
+      if (result) {
+        setShowAddForm(false);
+      }
     }
-  }, [newTitle, newDescription, newEventDate, newEventType, newPropertyId, newUnitId, addCalendarEvent]);
+    setNewTitle('');
+    setNewDescription('');
+    setNewEventType('maintenance');
+    setNewPropertyId('');
+    setNewUnitId('');
+    setNewEventDate('');
+  }, [newTitle, newDescription, newEventDate, newEventType, newPropertyId, newUnitId, addCalendarEvent, updateCalendarEvent, editingEvent]);
 
   const openAddForm = useCallback(() => {
+    setEditingEvent(null);
+    setNewTitle('');
+    setNewDescription('');
+    setNewEventType('maintenance');
+    setNewPropertyId('');
+    setNewUnitId('');
     setNewEventDate(toDateKey(selectedDate));
     setShowAddForm(true);
   }, [selectedDate]);
+
+  const openEditForm = useCallback((event: CalendarEventModel) => {
+    setEditingEvent(event);
+    setNewTitle(event.title);
+    setNewDescription(event.description ?? '');
+    setNewEventType(event.eventType);
+    setNewPropertyId(event.propertyId ?? '');
+    setNewUnitId(event.unitId ?? '');
+    setNewEventDate(event.eventDate);
+    setShowAddForm(true);
+  }, []);
 
   const getStatusIcon = useCallback((status: string) => {
     switch (status) {
@@ -526,7 +560,7 @@ export default function CalendarScreen() {
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Event</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingEvent ? 'Edit Event' : 'Add Event'}</Text>
             <TouchableOpacity onPress={() => setShowAddForm(false)}>
               <X size={20} color={colors.textTertiary} strokeWidth={2} />
             </TouchableOpacity>
@@ -695,7 +729,7 @@ export default function CalendarScreen() {
               {isAddingEvent ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.modalSubmitText}>Add Event</Text>
+                <Text style={styles.modalSubmitText}>{editingEvent ? 'Save Changes' : 'Add Event'}</Text>
               )}
             </TouchableOpacity>
           </ScrollView>
@@ -872,13 +906,22 @@ export default function CalendarScreen() {
                     )}
                   </TouchableOpacity>
                   {isCalendarEvent && event.calendarEvent && (
-                    <TouchableOpacity
-                      style={styles.deleteCalBtn}
-                      onPress={() => handleDeleteCalendarEvent(event.calendarEvent!.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Trash2 size={14} color={colors.danger} strokeWidth={2} />
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity
+                        style={styles.editCalBtn}
+                        onPress={() => openEditForm(event.calendarEvent!)}
+                        activeOpacity={0.7}
+                      >
+                        <Pencil size={14} color={colors.textSecondary} strokeWidth={2} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteCalBtn}
+                        onPress={() => handleDeleteCalendarEvent(event.calendarEvent!.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Trash2 size={14} color={colors.danger} strokeWidth={2} />
+                      </TouchableOpacity>
+                    </>
                   )}
                 </View>
               </View>
@@ -1098,6 +1141,11 @@ const styles = StyleSheet.create({
   addCalText: {
     fontSize: 13,
     fontWeight: '600' as const,
+  },
+  editCalBtn: {
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteCalBtn: {
     paddingHorizontal: 16,

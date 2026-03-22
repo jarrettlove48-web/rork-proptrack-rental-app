@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant, Contractor, ContractorCategory, RequestMedia, ProposedTimeSlot } from '@/types';
+import { Property, Unit, MaintenanceRequest, Message, UserProfile, Expense, ActivityItem, CalendarEvent, Tenant, Contractor, ContractorCategory, RequestMedia, ProposedTimeSlot, RequestCategory } from '@/types';
 
 function mapProperty(row: Record<string, unknown>): Property {
   return {
@@ -51,6 +51,9 @@ function mapRequest(row: Record<string, unknown>): MaintenanceRequest {
     requestedDate: row.requested_date as string | undefined,
     assignedContractorId: (row.assigned_contractor_id as string | null) ?? null,
     contractorStatus: (row.contractor_status as MaintenanceRequest['contractorStatus']) ?? null,
+    proposedTimes: (row.proposed_times as ProposedTimeSlot[] | null) ?? null,
+    confirmedTime: (row.confirmed_time as string | null) ?? null,
+    confirmedBy: (row.confirmed_by as string | null) ?? null,
   };
 }
 
@@ -1048,12 +1051,49 @@ export const [DataProvider, useData] = createContextHook(() => {
     return newEvent;
   }, [userId, queryClient]);
 
+  const updateCalendarEvent = useCallback(async (id: string, data: Partial<Omit<CalendarEvent, 'id' | 'ownerId' | 'createdAt'>>) => {
+    if (!userId) return;
+    console.log('[Data] Updating calendar event:', id);
+    const updateData: Record<string, unknown> = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.eventDate !== undefined) updateData.event_date = data.eventDate;
+    if (data.eventType !== undefined) updateData.event_type = data.eventType;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.propertyId !== undefined) updateData.property_id = data.propertyId;
+    if (data.unitId !== undefined) updateData.unit_id = data.unitId;
+    const { error } = await supabase.from('calendar_events').update(updateData).eq('id', id);
+    if (error) console.log('[Data] Update calendar event error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] });
+  }, [userId, queryClient]);
+
   const deleteCalendarEvent = useCallback(async (id: string) => {
     if (!userId) return;
     console.log('[Data] Deleting calendar event:', id);
     const { error } = await supabase.from('calendar_events').delete().eq('id', id);
     if (error) console.log('[Data] Delete calendar event error:', error.message);
     void queryClient.invalidateQueries({ queryKey: ['calendarEvents', userId] });
+  }, [userId, queryClient]);
+
+  const updateRequestDescription = useCallback(async (id: string, description: string) => {
+    if (!userId) return;
+    console.log('[Data] Updating request description:', id);
+    const { error } = await supabase.from('maintenance_requests').update({
+      description,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
+    if (error) console.log('[Data] Update request description error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
+  }, [userId, queryClient]);
+
+  const updateRequestCategory = useCallback(async (id: string, category: RequestCategory) => {
+    if (!userId) return;
+    console.log('[Data] Updating request category:', id, category);
+    const { error } = await supabase.from('maintenance_requests').update({
+      category,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
+    if (error) console.log('[Data] Update request category error:', error.message);
+    void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
   }, [userId, queryClient]);
 
   const isLoading = propertiesQuery.isLoading || unitsQuery.isLoading || requestsQuery.isLoading;
@@ -1101,7 +1141,10 @@ export const [DataProvider, useData] = createContextHook(() => {
     deleteExpense,
     updateProfile,
     addCalendarEvent,
+    updateCalendarEvent,
     deleteCalendarEvent,
+    updateRequestDescription,
+    updateRequestCategory,
     addTenant,
     moveTenantOut,
     updateTenant,
@@ -1127,7 +1170,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     profile, isLoading, addProperty, updateProperty, deleteProperty, addUnit,
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
     updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
-    addCalendarEvent, deleteCalendarEvent, addTenant, moveTenantOut, updateTenant,
+    addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, updateRequestDescription, updateRequestCategory, addTenant, moveTenantOut, updateTenant,
     addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia, confirmTimeSlot,
     getUnitsForProperty, getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, getTenantsForUnit, openRequestCount, occupiedUnitCount, totalExpenses,

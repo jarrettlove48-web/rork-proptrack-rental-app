@@ -476,6 +476,23 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     return messages.filter(m => m.requestId === requestId);
   }, [messages]);
 
+  const updateTenantProfile = useCallback(async (updates: { name?: string; phone?: string }) => {
+    if (!userId) return;
+    console.log('[Tenant] Updating tenant profile:', updates);
+    if (updates.name !== undefined) {
+      const { error } = await supabase.from('profiles').update({ name: updates.name }).eq('id', userId);
+      if (error) console.log('[Tenant] Update name error:', error.message);
+    }
+    if (updates.phone !== undefined) {
+      const { error } = await supabase.from('profiles').update({ phone: updates.phone }).eq('id', userId);
+      if (error) console.log('[Tenant] Update phone error:', error.message);
+    }
+    if (unit && updates.name !== undefined) {
+      await supabase.from('units').update({ tenant_name: updates.name }).eq('id', unit.id);
+      void queryClient.invalidateQueries({ queryKey: ['tenant-unit', unit.id] });
+    }
+  }, [userId, unit, queryClient]);
+
   const openRequests = useMemo(() => requests.filter(r => r.status !== 'resolved'), [requests]);
   const resolvedRequests = useMemo(() => requests.filter(r => r.status === 'resolved'), [requests]);
   const isLoading = isLoadingSession || unitQuery.isLoading;
@@ -516,11 +533,12 @@ export const [TenantProvider, useTenant] = createContextHook(() => {
     submitRequest,
     sendMessage,
     getMessagesForRequest,
+    updateTenantProfile,
     logout,
     refetchAll,
   }), [
     isTenantRole, tenantSession, unit, property, requests, messages,
     openRequests, resolvedRequests, isLoading, checkInviteCode, verifyInviteCode,
-    submitRequest, sendMessage, getMessagesForRequest, logout, refetchAll,
+    submitRequest, sendMessage, getMessagesForRequest, updateTenantProfile, logout, refetchAll,
   ]);
 });
