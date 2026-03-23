@@ -1,17 +1,46 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Linking from "expo-linking";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { DataProvider } from "@/context/DataContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
+import { handleOAuthDeepLink } from "@/lib/supabase";
 
 void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+function useDeepLinkHandler() {
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const handleUrl = (event: { url: string }) => {
+      console.log('[DeepLink] Received URL:', event.url);
+      if (event.url.includes('access_token') || event.url.includes('auth/callback')) {
+        void handleOAuthDeepLink(event.url);
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleUrl);
+
+    void Linking.getInitialURL().then((url) => {
+      if (url && (url.includes('access_token') || url.includes('auth/callback'))) {
+        console.log('[DeepLink] Initial URL has auth tokens:', url);
+        void handleOAuthDeepLink(url);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+}
 
 function useProtectedRoute() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -58,6 +87,7 @@ function useProtectedRoute() {
 
 function RootLayoutNav() {
   const { colors } = useTheme();
+  useDeepLinkHandler();
   useProtectedRoute();
 
   return (
