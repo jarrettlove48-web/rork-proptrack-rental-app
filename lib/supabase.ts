@@ -30,7 +30,7 @@ export function getOAuthRedirectUrl() {
   }
 
   const redirectUrl = makeRedirectUri({
-    scheme: 'rork-app',
+    scheme: 'proptrack',
     path: 'auth/callback',
   });
   console.log('[OAuth] Native redirect URL:', redirectUrl);
