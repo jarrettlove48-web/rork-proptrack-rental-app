@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -29,10 +29,7 @@ export function getOAuthRedirectUrl() {
     return redirectUrl;
   }
 
-  const redirectUrl = makeRedirectUri({
-    scheme: 'proptrack',
-    path: 'auth/callback',
-  });
+  const redirectUrl = Linking.createURL('auth/callback');
   console.log('[OAuth] Native redirect URL:', redirectUrl);
   return redirectUrl;
 }
