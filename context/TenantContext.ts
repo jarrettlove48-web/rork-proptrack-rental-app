@@ -23,6 +23,7 @@ function mapUnit(row: Record<string, unknown>): Unit {
     tenantPhone: (row.tenant_phone as string) ?? '',
     tenantEmail: (row.tenant_email as string) ?? '',
     moveInDate: (row.move_in_date as string) ?? '',
+    leaseEndDate: (row.lease_end_date as string | null) ?? null,
     isOccupied: (row.is_occupied as boolean) ?? false,
     isInvited: (row.is_invited as boolean) ?? false,
     invitedAt: row.invited_at as string | undefined,
