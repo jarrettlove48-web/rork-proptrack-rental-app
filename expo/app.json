@@ -15,7 +15,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.proptrack.app"
+      "bundleIdentifier": "com.proptrack.app",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "PropTrack uses your camera to take photos for maintenance requests.",
+        "NSPhotoLibraryUsageDescription": "PropTrack accesses your photo library to attach images to maintenance requests."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,7 +38,7 @@
       [
         "expo-router",
         {
-          "origin": "https://rork.com/"
+          "origin": "https://app.proptrack.app"
         }
       ],
       "expo-font",
@@ -39,6 +46,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "FILL_IN_EAS_PROJECT_ID"
+      }
     }
   }
 }
