@@ -119,6 +119,8 @@ function RootLayoutNav() {
       <Stack.Screen name="notification-settings" options={{ title: "Notifications" }} />
       <Stack.Screen name="bulk-tenants" options={{ title: "Manage Tenants" }} />
       <Stack.Screen name="contractors" options={{ title: "Contractors" }} />
+      <Stack.Screen name="privacy-policy" options={{ title: "Privacy Policy" }} />
+      <Stack.Screen name="contractor-portal" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

@@ -381,9 +381,15 @@ export default function AccountScreen() {
             <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
           </TouchableOpacity>
           <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />
-          <TouchableOpacity style={styles.settingRow}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/privacy-policy' as never);
+            }}
+          >
             <Shield size={15} color={colors.textSecondary} strokeWidth={2} />
-            <Text style={[styles.settingText, { color: colors.text }]}>Privacy & Security</Text>
+            <Text style={[styles.settingText, { color: colors.text }]}>Privacy Policy</Text>
             <ChevronRight size={14} color={colors.textTertiary} strokeWidth={1.5} />
           </TouchableOpacity>
           <View style={[styles.fieldDivider, { backgroundColor: colors.divider }]} />

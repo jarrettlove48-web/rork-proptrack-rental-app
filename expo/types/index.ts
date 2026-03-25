@@ -87,7 +87,7 @@ export interface Message {
   requestId: string;
   senderId: string;
   senderName: string;
-  senderRole: 'landlord' | 'tenant';
+  senderRole: 'landlord' | 'tenant' | 'contractor';
   body: string;
   timestamp: string;
 }

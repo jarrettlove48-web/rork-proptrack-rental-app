@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import createContextHook from '@nkzw/create-context-hook';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 type PurchasesPackage = any;
 type CustomerInfo = any;
@@ -40,6 +41,7 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
   const { user } = useAuth();
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [devOverride, setDevOverride] = useState<'starter' | 'essential' | 'pro' | null>(null);
+  const lastSyncedPlanRef = useRef<string | null>(null);
   const loggedInUserRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -122,6 +124,7 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
       console.log('[RevenueCat] Purchase successful');
       setCustomerInfo(data.customerInfo);
       queryClient.setQueryData(['rc-customer-info'], data.customerInfo);
+      lastSyncedPlanRef.current = null;
     },
     onError: (err: unknown) => {
       const error = err as { userCancelled?: boolean; message?: string };
@@ -157,6 +160,27 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
     : 'starter';
 
   const currentPlan = devOverride ?? _currentPlan;
+
+  useEffect(() => {
+    if (!user?.id || !rcAvailable) return;
+    if (lastSyncedPlanRef.current === _currentPlan) return;
+    lastSyncedPlanRef.current = _currentPlan;
+    console.log('[RevenueCat] Syncing plan to Supabase:', _currentPlan);
+    supabase
+      .from('profiles')
+      .update({ plan: _currentPlan, updated_at: new Date().toISOString() })
+      .eq('id', user.id)
+      .then(({ error }) => {
+        if (error) {
+          console.log('[RevenueCat] Plan sync error:', error.message);
+          lastSyncedPlanRef.current = null;
+        } else {
+          console.log('[RevenueCat] Plan synced to Supabase successfully:', _currentPlan);
+          void queryClient.invalidateQueries({ queryKey: ['profile', user.id] });
+        }
+      });
+  }, [_currentPlan, user?.id, queryClient]);
+
   const isPro = currentPlan === 'pro';
   const isEssential = currentPlan === 'essential';
 
@@ -179,7 +203,7 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
     restoreMutation.mutate();
   }, [restoreMutation]);
 
-  return {
+  return useMemo(() => ({
     customerInfo,
     offerings,
     essentialPackage,
@@ -197,5 +221,10 @@ export const [SubscriptionProvider, useSubscription] = createContextHook(() => {
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
     devOverride,
     setDevOverride,
-  };
+  }), [
+    customerInfo, offerings, essentialPackage, proPackage, currentPlan,
+    isEssential, isPro, purchasePackage, restorePurchases,
+    purchaseMutation.isPending, restoreMutation.isPending, purchaseMutation.error,
+    offeringsQuery.isLoading, customerInfoQuery.isLoading, devOverride, setDevOverride,
+  ]);
 });
