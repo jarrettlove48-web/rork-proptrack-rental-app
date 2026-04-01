@@ -45,7 +45,7 @@ export default function AddExpenseScreen() {
 
   const isValid = selectedPropertyId && description.trim().length > 0 && amount.trim().length > 0 && category;
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!isValid || !category) return;
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -53,7 +53,7 @@ export default function AddExpenseScreen() {
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    void addExpense({
+    const result = await addExpense({
       propertyId: selectedPropertyId,
       unitId: selectedUnitId || undefined,
       description: description.trim(),
@@ -64,7 +64,18 @@ export default function AddExpenseScreen() {
       receiptUri: receiptUri || undefined,
       isRecurring,
     });
-    Alert.alert('Expense Logged', `$${parsedAmount.toFixed(2)} expense has been recorded.`, [
+    if (result.limitReached) {
+      Alert.alert(
+        'Plan Upgrade Required',
+        'Expense tracking requires the Essential plan or above.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
+    Alert.alert('Expense Logged', `${parsedAmount.toFixed(2)} expense has been recorded.`, [
       { text: 'OK', onPress: () => router.back() },
     ]);
   }, [isValid, category, amount, selectedPropertyId, selectedUnitId, description, vendor, receiptUri, isRecurring, addExpense, router]);

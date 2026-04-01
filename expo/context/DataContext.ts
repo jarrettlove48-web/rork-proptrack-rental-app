@@ -482,8 +482,8 @@ export const [DataProvider, useData] = createContextHook(() => {
     void queryClient.invalidateQueries({ queryKey: ['activities', userId] });
   }, [userId, queryClient]);
 
-  const addProperty = useCallback(async (data: Omit<Property, 'id' | 'createdAt'>) => {
-    if (!userId) return null;
+  const addProperty = useCallback(async (data: Omit<Property, 'id' | 'createdAt'>): Promise<{ property: Property | null; limitReached: boolean }> => {
+    if (!userId) return { property: null, limitReached: false };
     console.log('[Data] Adding property:', data.name);
     const { data: inserted, error } = await supabase
       .from('properties')
@@ -497,12 +497,15 @@ export const [DataProvider, useData] = createContextHook(() => {
       .single();
     if (error) {
       console.log('[Data] Add property error:', error.message);
-      return null;
+      if (error.message.includes('limit reached') || error.message.includes('requires')) {
+        return { property: null, limitReached: true };
+      }
+      return { property: null, limitReached: false };
     }
     const newProperty = mapProperty(inserted);
     void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
     void addActivityRecord({ type: 'property_added', title: 'Property added', subtitle: newProperty.name, relatedId: newProperty.id, relatedPropertyId: newProperty.id });
-    return newProperty;
+    return { property: newProperty, limitReached: false };
   }, [userId, queryClient, addActivityRecord]);
 
   const updateProperty = useCallback(async (id: string, data: Partial<Omit<Property, 'id' | 'createdAt'>>) => {
@@ -528,8 +531,8 @@ export const [DataProvider, useData] = createContextHook(() => {
     void queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
   }, [userId, queryClient]);
 
-  const addUnit = useCallback(async (data: Omit<Unit, 'id'>) => {
-    if (!userId) return null;
+  const addUnit = useCallback(async (data: Omit<Unit, 'id'>): Promise<{ unit: Unit | null; limitReached: boolean }> => {
+    if (!userId) return { unit: null, limitReached: false };
     console.log('[Data] Adding unit:', data.label);
     const { data: inserted, error } = await supabase
       .from('units')
@@ -548,13 +551,16 @@ export const [DataProvider, useData] = createContextHook(() => {
       .single();
     if (error) {
       console.log('[Data] Add unit error:', error.message);
-      return null;
+      if (error.message.includes('limit reached') || error.message.includes('requires')) {
+        return { unit: null, limitReached: true };
+      }
+      return { unit: null, limitReached: false };
     }
     const newUnit = mapUnit(inserted);
     void queryClient.invalidateQueries({ queryKey: ['units', userId] });
     const prop = properties.find(p => p.id === data.propertyId);
     void addActivityRecord({ type: 'unit_added', title: 'Unit added', subtitle: `${newUnit.label} at ${prop?.name ?? 'property'}`, relatedId: newUnit.id, relatedPropertyId: data.propertyId });
-    return newUnit;
+    return { unit: newUnit, limitReached: false };
   }, [userId, queryClient, properties, addActivityRecord]);
 
   const updateUnit = useCallback(async (id: string, data: Partial<Omit<Unit, 'id' | 'propertyId'>>) => {
@@ -577,13 +583,27 @@ export const [DataProvider, useData] = createContextHook(() => {
     void queryClient.invalidateQueries({ queryKey: ['units', userId] });
   }, [userId, queryClient]);
 
-  const deleteUnit = useCallback(async (id: string) => {
+  const deleteUnit = useCallback(async (id: string, propertyId?: string) => {
     if (!userId) return;
     console.log('[Data] Deleting unit:', id);
+    await supabase.from('tenants').update({
+      is_active: false,
+      move_out_date: new Date().toISOString().split('T')[0],
+    }).eq('unit_id', id).eq('is_active', true);
     const { error } = await supabase.from('units').delete().eq('id', id);
     if (error) console.log('[Data] Delete unit error:', error.message);
+    if (propertyId) {
+      const prop = properties.find(p => p.id === propertyId);
+      if (prop) {
+        await supabase.from('properties').update({
+          unit_count: Math.max(0, prop.unitCount - 1),
+        }).eq('id', propertyId);
+        void queryClient.invalidateQueries({ queryKey: ['properties', userId] });
+      }
+    }
     void queryClient.invalidateQueries({ queryKey: ['units', userId] });
-  }, [userId, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: ['tenants', userId] });
+  }, [userId, queryClient, properties]);
 
   const inviteTenant = useCallback(async (unitId: string) => {
     if (!userId) return '';
@@ -714,8 +734,8 @@ export const [DataProvider, useData] = createContextHook(() => {
     return newMessage;
   }, [userId, queryClient, addActivityRecord]);
 
-  const addExpense = useCallback(async (data: Omit<Expense, 'id' | 'createdAt'>) => {
-    if (!userId) return null;
+  const addExpense = useCallback(async (data: Omit<Expense, 'id' | 'createdAt'>): Promise<{ expense: Expense | null; limitReached: boolean }> => {
+    if (!userId) return { expense: null, limitReached: false };
     console.log('[Data] Adding expense');
     const { data: inserted, error } = await supabase
       .from('expenses')
@@ -736,7 +756,10 @@ export const [DataProvider, useData] = createContextHook(() => {
       .single();
     if (error) {
       console.log('[Data] Add expense error:', error.message);
-      return null;
+      if (error.message.includes('limit reached') || error.message.includes('requires Essential') || error.message.includes('requires Pro')) {
+        return { expense: null, limitReached: true };
+      }
+      return { expense: null, limitReached: false };
     }
     const newExpense = mapExpense(inserted);
     void queryClient.invalidateQueries({ queryKey: ['expenses', userId] });
@@ -748,7 +771,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       relatedId: newExpense.id,
       relatedPropertyId: data.propertyId,
     });
-    return newExpense;
+    return { expense: newExpense, limitReached: false };
   }, [userId, properties, queryClient, addActivityRecord]);
 
   const deleteExpense = useCallback(async (id: string) => {
@@ -896,8 +919,8 @@ export const [DataProvider, useData] = createContextHook(() => {
     phone?: string;
     email?: string;
     notes?: string;
-  }) => {
-    if (!userId) return null;
+  }): Promise<{ contractor: Contractor | null; limitReached: boolean }> => {
+    if (!userId) return { contractor: null, limitReached: false };
     console.log('[Data] Adding contractor:', data.firstName, data.lastName);
     const { data: inserted, error } = await supabase
       .from('contractors')
@@ -915,7 +938,10 @@ export const [DataProvider, useData] = createContextHook(() => {
       .single();
     if (error) {
       console.log('[Data] Add contractor error:', error.message);
-      return null;
+      if (error.message.includes('limit reached') || error.message.includes('requires')) {
+        return { contractor: null, limitReached: true };
+      }
+      return { contractor: null, limitReached: false };
     }
     const newContractor = mapContractor(inserted);
     void queryClient.invalidateQueries({ queryKey: ['contractors', userId] });
@@ -925,7 +951,7 @@ export const [DataProvider, useData] = createContextHook(() => {
       subtitle: `${data.firstName} ${data.lastName}${data.company ? ` — ${data.company}` : ''}`,
       relatedId: newContractor.id,
     });
-    return newContractor;
+    return { contractor: newContractor, limitReached: false };
   }, [userId, queryClient, addActivityRecord]);
 
   const updateContractor = useCallback(async (contractorId: string, updates: Partial<{
@@ -1010,6 +1036,37 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (error) console.log('[Data] Confirm time slot error:', error.message);
     void queryClient.invalidateQueries({ queryKey: ['requests', userId] });
   }, [userId, queryClient]);
+
+  const uploadRequestMedia = useCallback(async (requestId: string, files: { uri: string; type: string; name: string }[]) => {
+    if (!userId) return;
+    console.log('[Data] Uploading', files.length, 'media for request:', requestId);
+    for (const file of files) {
+      try {
+        const ext = file.name.split('.').pop() || 'jpg';
+        const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        const filePath = `${requestId}/${uniqueId}.${ext}`;
+        const response = await fetch(file.uri);
+        const blob = await response.blob();
+        const { error: uploadError } = await supabase.storage
+          .from('request-media')
+          .upload(filePath, blob, { contentType: file.type });
+        if (uploadError) {
+          console.log('[Data] Upload error:', uploadError.message);
+          continue;
+        }
+        const { data: urlData } = supabase.storage.from('request-media').getPublicUrl(filePath);
+        await supabase.from('request_media').insert({
+          request_id: requestId,
+          media_url: urlData.publicUrl,
+          media_type: file.type.startsWith('video/') ? 'video' : 'image',
+          uploaded_by: userId,
+        });
+        console.log('[Data] Media uploaded:', urlData.publicUrl);
+      } catch (err) {
+        console.log('[Data] Media upload failed:', err);
+      }
+    }
+  }, [userId]);
 
   const openRequestCount = useMemo(() => {
     return requests.filter(r => r.status !== 'resolved').length;
@@ -1155,6 +1212,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     unassignContractor,
     getRequestMedia,
     confirmTimeSlot,
+    uploadRequestMedia,
     getUnitsForProperty,
     getRequestsForProperty,
     getRequestsForUnit,
@@ -1171,7 +1229,7 @@ export const [DataProvider, useData] = createContextHook(() => {
     updateUnit, deleteUnit, inviteTenant, addRequest, updateRequestStatus,
     updateRequestDates, addMessage, addExpense, deleteExpense, updateProfile,
     addCalendarEvent, updateCalendarEvent, deleteCalendarEvent, updateRequestDescription, updateRequestCategory, addTenant, moveTenantOut, updateTenant,
-    addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia, confirmTimeSlot,
+    addContractor, updateContractor, removeContractor, assignContractor, unassignContractor, getRequestMedia, confirmTimeSlot, uploadRequestMedia,
     getUnitsForProperty, getRequestsForProperty, getRequestsForUnit, getMessagesForRequest,
     getExpensesForProperty, getTenantsForUnit, openRequestCount, occupiedUnitCount, totalExpenses,
     refetchAll,

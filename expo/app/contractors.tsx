@@ -155,7 +155,7 @@ export default function ContractorsScreen() {
         notes: notes.trim() || null,
       });
     } else {
-      await addContractor({
+      const result = await addContractor({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         category,
@@ -165,12 +165,24 @@ export default function ContractorsScreen() {
         website: website.trim() || undefined,
         notes: notes.trim() || undefined,
       });
+      if (result.limitReached) {
+        setIsSubmitting(false);
+        Alert.alert(
+          'Contractor Limit',
+          getContractorLimitMessage(currentPlan),
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+          ]
+        );
+        return;
+      }
     }
 
     setIsSubmitting(false);
     setShowAddModal(false);
     resetForm();
-  }, [firstName, lastName, company, category, phone, email, website, notes, editingContractor, addContractor, updateContractor, resetForm]);
+  }, [firstName, lastName, company, category, phone, email, website, notes, editingContractor, addContractor, updateContractor, resetForm, currentPlan, router]);
 
   const handleRemove = useCallback((contractor: Contractor) => {
     Alert.alert(

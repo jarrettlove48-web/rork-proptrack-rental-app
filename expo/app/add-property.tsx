@@ -30,7 +30,7 @@ export default function AddPropertyScreen() {
   const isValid = name.trim().length > 0 && address.trim().length > 0;
   const atLimit = !canAddProperty(currentPlan, properties.length);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!isValid) return;
     if (atLimit) {
       Alert.alert(
@@ -44,11 +44,22 @@ export default function AddPropertyScreen() {
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    void addProperty({
+    const result = await addProperty({
       name: name.trim(),
       address: address.trim(),
       unitCount: parseInt(unitCount, 10) || 0,
     });
+    if (result.limitReached) {
+      Alert.alert(
+        'Property Limit Reached',
+        getPropertyLimitMessage(currentPlan),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
     router.back();
   }, [name, address, unitCount, isValid, addProperty, router, atLimit, currentPlan]);
 

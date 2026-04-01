@@ -27,6 +27,12 @@ import {
   Wrench,
   FileText,
   X,
+  CalendarCheck,
+  Pencil,
+  Phone,
+  Mail,
+  Globe,
+  Building2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/AuthContext';
@@ -92,6 +98,13 @@ export default function ContractorPortalScreen() {
   const [messageText, setMessageText] = useState('');
   const [noteText, setNoteText] = useState('');
   const [showNoteInput, setShowNoteInput] = useState<string | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editCompany, setEditCompany] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [contractorFullInfo, setContractorFullInfo] = useState<{ phone: string | null; email: string | null; company: string | null; website: string | null } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const fetchContractorData = useCallback(async () => {
@@ -118,6 +131,12 @@ export default function ContractorPortalScreen() {
       lastName: row.last_name as string,
     };
     setContractorInfo(cInfo);
+    setContractorFullInfo({
+      phone: (row.phone as string | null) ?? null,
+      email: (row.email as string | null) ?? null,
+      company: (row.company as string | null) ?? null,
+      website: (row.website as string | null) ?? null,
+    });
     console.log('[ContractorPortal] Contractor found:', cInfo.id);
 
     const { data: jobRows, error: jError } = await supabase
@@ -237,6 +256,55 @@ export default function ContractorPortalScreen() {
     setMessageText('');
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
   }, [messageText, selectedJobId, userId, contractorInfo]);
+
+  const handleConfirmTimeSlot = useCallback(async (jobId: string, slot: ProposedTimeSlot) => {
+    if (!userId) return;
+    console.log('[ContractorPortal] Confirming time slot for job:', jobId, slot);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const confirmedTime = new Date(`${slot.date}T${slot.startTime}:00`).toISOString();
+    const { error } = await supabase
+      .from('maintenance_requests')
+      .update({
+        confirmed_time: confirmedTime,
+        confirmed_by: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+    if (error) {
+      Alert.alert('Error', 'Failed to confirm time slot.');
+      console.log('[ContractorPortal] Confirm time error:', error.message);
+    } else {
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, confirmedTime: confirmedTime, confirmedBy: userId } : j));
+    }
+  }, [userId]);
+
+  const handleSaveProfile = useCallback(async () => {
+    if (!contractorInfo) return;
+    setIsSavingProfile(true);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const { error } = await supabase
+      .from('contractors')
+      .update({
+        phone: editPhone.trim() || null,
+        email: editEmail.trim() || null,
+        company: editCompany.trim() || null,
+        website: editWebsite.trim() || null,
+      })
+      .eq('id', contractorInfo.id);
+    if (error) {
+      Alert.alert('Error', 'Failed to update profile.');
+      console.log('[ContractorPortal] Profile update error:', error.message);
+    } else {
+      setContractorFullInfo({
+        phone: editPhone.trim() || null,
+        email: editEmail.trim() || null,
+        company: editCompany.trim() || null,
+        website: editWebsite.trim() || null,
+      });
+    }
+    setIsSavingProfile(false);
+    setIsEditingProfile(false);
+  }, [contractorInfo, editPhone, editEmail, editCompany, editWebsite]);
 
   const handleAddNote = useCallback(async (jobId: string) => {
     if (!noteText.trim() || !userId || !contractorInfo) return;
@@ -410,6 +478,44 @@ export default function ContractorPortalScreen() {
               </View>
             )}
 
+            {job.contractorStatus === 'accepted' && job.confirmedTime && (
+              <View style={[styles.scheduledBanner, { backgroundColor: '#05966914' }]}>
+                <CalendarCheck size={14} color="#059669" strokeWidth={2} />
+                <Text style={[styles.scheduledBannerText, { color: '#059669' }]}>
+                  Scheduled: {new Date(job.confirmedTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(job.confirmedTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
+
+            {job.contractorStatus === 'accepted' && !job.confirmedTime && job.proposedTimes && job.proposedTimes.length > 0 && (
+              <View style={styles.proposedTimesSection}>
+                <View style={styles.proposedTimesHeader}>
+                  <Clock size={13} color="#D97706" strokeWidth={2} />
+                  <Text style={[styles.proposedTimesTitle, { color: colors.textSecondary }]}>Tenant Proposed Times</Text>
+                </View>
+                {job.proposedTimes.map((slot, idx) => (
+                  <View key={idx} style={[styles.proposedSlotCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+                    <View style={styles.proposedSlotInfo}>
+                      <Text style={[styles.proposedSlotDate, { color: colors.text }]}>
+                        {new Date(slot.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                      <Text style={[styles.proposedSlotTime, { color: colors.textSecondary }]}>
+                        {slot.startTime} – {slot.endTime}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.selectSlotBtn, { backgroundColor: colors.success }]}
+                      onPress={() => handleConfirmTimeSlot(job.id, slot)}
+                      activeOpacity={0.8}
+                    >
+                      <CalendarCheck size={13} color="#FFFFFF" strokeWidth={2} />
+                      <Text style={styles.selectSlotBtnText}>Select</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {showNoteInput === job.id ? (
               <View style={styles.noteInputWrap}>
                 <TextInput
@@ -571,6 +677,121 @@ export default function ContractorPortalScreen() {
             <LogOut size={20} color={colors.textTertiary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
+
+        {contractorFullInfo && (
+          <View style={[styles.profileCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+            {isEditingProfile ? (
+              <View style={styles.profileEditForm}>
+                <View style={styles.profileEditField}>
+                  <Phone size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.profileEditInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="Phone"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                <View style={styles.profileEditField}>
+                  <Mail size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.profileEditInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                    placeholder="Email"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.profileEditField}>
+                  <Building2 size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.profileEditInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                    value={editCompany}
+                    onChangeText={setEditCompany}
+                    placeholder="Company"
+                    placeholderTextColor={colors.textTertiary}
+                  />
+                </View>
+                <View style={styles.profileEditField}>
+                  <Globe size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <TextInput
+                    style={[styles.profileEditInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                    value={editWebsite}
+                    onChangeText={setEditWebsite}
+                    placeholder="Website"
+                    placeholderTextColor={colors.textTertiary}
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.profileEditActions}>
+                  <TouchableOpacity
+                    style={[styles.profileCancelBtn, { borderColor: colors.border }]}
+                    onPress={() => setIsEditingProfile(false)}
+                  >
+                    <Text style={[styles.profileCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.profileSaveBtn, { backgroundColor: colors.primary }, isSavingProfile && { opacity: 0.5 }]}
+                    onPress={handleSaveProfile}
+                    disabled={isSavingProfile}
+                  >
+                    <Text style={styles.profileSaveText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View>
+                <View style={styles.profileCardHeader}>
+                  <Text style={[styles.profileCardTitle, { color: colors.textSecondary }]}>My Profile</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditPhone(contractorFullInfo.phone ?? '');
+                      setEditEmail(contractorFullInfo.email ?? '');
+                      setEditCompany(contractorFullInfo.company ?? '');
+                      setEditWebsite(contractorFullInfo.website ?? '');
+                      setIsEditingProfile(true);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Pencil size={14} color={colors.primary} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.profileInfoRow}>
+                  {contractorFullInfo.phone && (
+                    <View style={styles.profileInfoItem}>
+                      <Phone size={12} color={colors.textTertiary} strokeWidth={2} />
+                      <Text style={[styles.profileInfoText, { color: colors.text }]}>{contractorFullInfo.phone}</Text>
+                    </View>
+                  )}
+                  {contractorFullInfo.email && (
+                    <View style={styles.profileInfoItem}>
+                      <Mail size={12} color={colors.textTertiary} strokeWidth={2} />
+                      <Text style={[styles.profileInfoText, { color: colors.text }]}>{contractorFullInfo.email}</Text>
+                    </View>
+                  )}
+                  {contractorFullInfo.company && (
+                    <View style={styles.profileInfoItem}>
+                      <Building2 size={12} color={colors.textTertiary} strokeWidth={2} />
+                      <Text style={[styles.profileInfoText, { color: colors.text }]}>{contractorFullInfo.company}</Text>
+                    </View>
+                  )}
+                  {contractorFullInfo.website && (
+                    <View style={styles.profileInfoItem}>
+                      <Globe size={12} color={colors.textTertiary} strokeWidth={2} />
+                      <Text style={[styles.profileInfoText, { color: colors.text }]}>{contractorFullInfo.website}</Text>
+                    </View>
+                  )}
+                  {!contractorFullInfo.phone && !contractorFullInfo.email && !contractorFullInfo.company && !contractorFullInfo.website && (
+                    <Text style={[styles.profileInfoEmpty, { color: colors.textTertiary }]}>No contact info. Tap edit to add.</Text>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.warningLight }]}>
@@ -1035,6 +1256,143 @@ const styles = StyleSheet.create({
   addNoteBtnText: {
     fontSize: 14,
     fontWeight: '600' as const,
+  },
+  scheduledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 10,
+    gap: 8,
+  },
+  scheduledBannerText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  proposedTimesSection: {
+    marginTop: 14,
+  },
+  proposedTimesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  proposedTimesTitle: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  proposedSlotCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  proposedSlotInfo: {
+    flex: 1,
+  },
+  proposedSlotDate: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  proposedSlotTime: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  selectSlotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 5,
+  },
+  selectSlotBtnText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: '#FFFFFF',
+  },
+  profileCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  profileCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  profileCardTitle: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  profileInfoRow: {
+    gap: 8,
+  },
+  profileInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileInfoText: {
+    fontSize: 13,
+  },
+  profileInfoEmpty: {
+    fontSize: 13,
+    fontStyle: 'italic' as const,
+  },
+  profileEditForm: {
+    gap: 10,
+  },
+  profileEditField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileEditInput: {
+    flex: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+  },
+  profileEditActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  profileCancelBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  profileCancelText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  profileSaveBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  profileSaveText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#FFFFFF',
   },
   noteInputWrap: {
     marginTop: 14,

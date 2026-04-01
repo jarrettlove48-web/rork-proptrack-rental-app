@@ -37,7 +37,7 @@ export default function AddUnitScreen() {
 
   const isValid = label.trim().length > 0;
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!isValid || !propertyId) return;
     if (atLimit) {
       Alert.alert(
@@ -51,7 +51,7 @@ export default function AddUnitScreen() {
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    void addUnit({
+    const result = await addUnit({
       propertyId,
       label: label.trim(),
       tenantName: tenantName.trim(),
@@ -61,6 +61,17 @@ export default function AddUnitScreen() {
       leaseEndDate: leaseEndDate || null,
       isOccupied,
     });
+    if (result.limitReached) {
+      Alert.alert(
+        'Unit Limit Reached',
+        getUnitLimitMessage(currentPlan),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+        ]
+      );
+      return;
+    }
     router.back();
   }, [label, tenantName, tenantPhone, tenantEmail, leaseEndDate, isOccupied, propertyId, isValid, addUnit, router, atLimit, currentPlan]);
 
