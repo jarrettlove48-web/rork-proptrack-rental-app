@@ -19,7 +19,9 @@ export interface Unit {
   tenantPhone: string;
   tenantEmail: string;
   moveInDate: string;
+  moveOutDate?: string | null;
   leaseEndDate?: string | null;
+  leaseDocumentUrl?: string | null;
   isOccupied: boolean;
   isInvited?: boolean;
   invitedAt?: string;
@@ -164,6 +166,17 @@ export interface UserProfile {
   phone: string;
   plan: 'starter' | 'essential' | 'pro';
   darkMode?: boolean;
+  smsOptIn?: boolean;
+}
+
+export interface SubscriptionInfo {
+  plan: string;
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  hasDiscount: boolean;
+  discountName: string | null;
+  priceAmount: number | null;
 }
 
 export const REQUEST_CATEGORIES: { key: RequestCategory; label: string; icon: string }[] = [

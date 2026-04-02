@@ -24,7 +24,9 @@ function mapUnit(row: Record<string, unknown>): Unit {
     tenantPhone: (row.tenant_phone as string) ?? '',
     tenantEmail: (row.tenant_email as string) ?? '',
     moveInDate: (row.move_in_date as string) ?? '',
+    moveOutDate: (row.move_out_date as string | null) ?? null,
     leaseEndDate: (row.lease_end_date as string | null) ?? null,
+    leaseDocumentUrl: (row.lease_document_url as string | null) ?? null,
     isOccupied: (row.is_occupied as boolean) ?? false,
     isInvited: (row.is_invited as boolean) ?? false,
     invitedAt: row.invited_at as string | undefined,
@@ -170,6 +172,7 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
     phone: (row.phone as string) ?? '',
     plan: (row.plan as UserProfile['plan']) ?? 'starter',
     darkMode: (row.dark_mode as boolean) ?? false,
+    smsOptIn: (row.sms_opt_in as boolean) ?? false,
   };
 }
 
@@ -572,7 +575,9 @@ export const [DataProvider, useData] = createContextHook(() => {
     if (data.tenantPhone !== undefined) updateData.tenant_phone = data.tenantPhone;
     if (data.tenantEmail !== undefined) updateData.tenant_email = data.tenantEmail;
     if (data.moveInDate !== undefined) updateData.move_in_date = data.moveInDate;
+    if (data.moveOutDate !== undefined) updateData.move_out_date = data.moveOutDate;
     if (data.leaseEndDate !== undefined) updateData.lease_end_date = data.leaseEndDate;
+    if (data.leaseDocumentUrl !== undefined) updateData.lease_document_url = data.leaseDocumentUrl;
     if (data.isOccupied !== undefined) updateData.is_occupied = data.isOccupied;
     if (data.isInvited !== undefined) updateData.is_invited = data.isInvited;
     if (data.invitedAt !== undefined) updateData.invited_at = data.invitedAt;

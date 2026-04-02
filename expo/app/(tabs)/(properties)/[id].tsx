@@ -12,23 +12,27 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Home, User as UserIcon, Plus, Pencil, Trash2, UserPlus, Check, Phone, Mail, Lock, Calendar, LogOut, X, ChevronDown } from 'lucide-react-native';
+import { Home, User as UserIcon, Plus, Pencil, Trash2, UserPlus, Check, Phone, Mail, Lock, Calendar, LogOut, X, ChevronDown, FileText } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useData } from '@/context/DataContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { canAddUnit, getUnitLimitMessage } from '@/constants/plans';
 import { Unit, Tenant } from '@/types';
+import { supabase } from '@/lib/supabase';
+import * as DocumentPicker from 'expo-document-picker';
+import { Linking as RNLinking } from 'react-native';
 
 export default function PropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const {
     properties, units, getUnitsForProperty, getRequestsForProperty,
-    deleteProperty, deleteUnit, getTenantsForUnit, moveTenantOut, addTenant,
+    deleteProperty, deleteUnit, getTenantsForUnit, moveTenantOut, addTenant, updateUnit,
   } = useData();
   const { colors } = useTheme();
   const { currentPlan } = useSubscription();
+  const isStarterPlan = currentPlan === 'starter';
 
   const property = useMemo(() => properties.find(p => p.id === id), [properties, id]);
   const propertyUnits = useMemo(() => getUnitsForProperty(id ?? ''), [getUnitsForProperty, id]);
@@ -43,6 +47,79 @@ export default function PropertyDetailScreen() {
   const [newTenantLeaseEnd, setNewTenantLeaseEnd] = useState('');
   const [showLeaseEndPicker, setShowLeaseEndPicker] = useState(false);
   const [isSubmittingTenant, setIsSubmittingTenant] = useState(false);
+  const [uploadingLeaseUnitId, setUploadingLeaseUnitId] = useState<string | null>(null);
+
+  const handleUploadLease = useCallback(async (unitId: string) => {
+    if (isStarterPlan) {
+      Alert.alert('Upgrade Required', 'Lease document upload is available on Essential and Pro plans.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Upgrade', onPress: () => router.push('/paywall' as never) },
+      ]);
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const file = result.assets[0];
+      setUploadingLeaseUnitId(unitId);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const path = `${unitId}/${uniqueId}.pdf`;
+      const response = await fetch(file.uri);
+      const blob = await response.blob();
+      const { error: uploadError } = await supabase.storage
+        .from('lease-documents')
+        .upload(path, blob, { contentType: 'application/pdf' });
+      if (uploadError) {
+        console.log('[Lease] Upload error:', uploadError.message);
+        Alert.alert('Upload Failed', 'Could not upload the lease document. Please try again.');
+        setUploadingLeaseUnitId(null);
+        return;
+      }
+      await updateUnit(unitId, { leaseDocumentUrl: path });
+      console.log('[Lease] Uploaded successfully:', path);
+      setUploadingLeaseUnitId(null);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.log('[Lease] Upload exception:', err);
+      Alert.alert('Error', 'Something went wrong uploading the document.');
+      setUploadingLeaseUnitId(null);
+    }
+  }, [isStarterPlan, router, updateUnit]);
+
+  const handleViewLease = useCallback(async (leaseUrl: string) => {
+    try {
+      const { data } = await supabase.storage.from('lease-documents').createSignedUrl(leaseUrl, 3600);
+      if (data?.signedUrl) {
+        console.log('[Lease] Opening signed URL');
+        void RNLinking.openURL(data.signedUrl);
+      } else {
+        Alert.alert('Error', 'Could not generate document link.');
+      }
+    } catch (err) {
+      console.log('[Lease] View error:', err);
+      Alert.alert('Error', 'Could not open the document.');
+    }
+  }, []);
+
+  const handleDeleteLease = useCallback((unitId: string, leaseUrl: string) => {
+    Alert.alert('Delete Lease', 'Remove the lease document from this unit?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await supabase.storage.from('lease-documents').remove([leaseUrl]);
+          await updateUnit(unitId, { leaseDocumentUrl: null });
+          console.log('[Lease] Deleted:', leaseUrl);
+        },
+      },
+    ]);
+  }, [updateUnit]);
 
   const handleDeleteProperty = useCallback(() => {
     Alert.alert(
@@ -305,9 +382,48 @@ export default function PropertyDetailScreen() {
             )}
           </TouchableOpacity>
         )}
+
+        <View style={[styles.leaseDocRow, { borderTopColor: colors.divider }]}>
+          {item.leaseDocumentUrl ? (
+            <View style={styles.leaseDocActions}>
+              <TouchableOpacity
+                style={[styles.leaseDocBtn, { backgroundColor: colors.primaryFaint }]}
+                onPress={() => handleViewLease(item.leaseDocumentUrl!)}
+                activeOpacity={0.7}
+              >
+                <FileText size={13} color={colors.primary} strokeWidth={2} />
+                <Text style={[styles.leaseDocBtnText, { color: colors.primary }]}>View Lease</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.leaseDocDeleteBtn, { backgroundColor: colors.dangerLight }]}
+                onPress={() => handleDeleteLease(item.id, item.leaseDocumentUrl!)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Trash2 size={12} color={colors.danger} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.leaseDocBtn, { backgroundColor: colors.surfaceSecondary }]}
+              onPress={() => handleUploadLease(item.id)}
+              disabled={uploadingLeaseUnitId === item.id}
+              activeOpacity={0.7}
+            >
+              {uploadingLeaseUnitId === item.id ? (
+                <Text style={[styles.leaseDocBtnText, { color: colors.textTertiary }]}>Uploading...</Text>
+              ) : (
+                <>
+                  <FileText size={13} color={isStarterPlan ? colors.textTertiary : colors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.leaseDocBtnText, { color: isStarterPlan ? colors.textTertiary : colors.textSecondary }]}>Upload Lease PDF</Text>
+                  {isStarterPlan && <Lock size={11} color={colors.textTertiary} strokeWidth={2} />}
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
-  }, [handleDeleteUnit, handleInviteTenant, colors, router, getTenantsForUnit, renderTenantRow, openAddTenantModal]);
+  }, [handleDeleteUnit, handleInviteTenant, colors, router, getTenantsForUnit, renderTenantRow, openAddTenantModal, handleUploadLease, handleViewLease, handleDeleteLease, uploadingLeaseUnitId, isStarterPlan]);
 
   const renderAddTenantModal = () => (
     <Modal visible={showAddTenantModal} animationType="slide" transparent>
@@ -874,5 +990,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#FFFFFF',
+  },
+  leaseDocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 0.5,
+  },
+  leaseDocActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  leaseDocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    flex: 1,
+  },
+  leaseDocBtnText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  leaseDocDeleteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

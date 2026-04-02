@@ -288,6 +288,18 @@ export default function AccountScreen() {
               )}
             </TouchableOpacity>
           )}
+          {(isPro || isEssential) && (
+            <TouchableOpacity
+              style={styles.cancelLink}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/cancel-subscription' as never);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.cancelLinkText, { color: colors.textTertiary }]}>Cancel membership</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -704,6 +716,15 @@ const styles = StyleSheet.create({
   billingBtnText: {
     fontSize: 13,
     fontWeight: '600' as const,
+  },
+  cancelLink: {
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  cancelLinkText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
   },
   settingRow: {
     flexDirection: 'row',

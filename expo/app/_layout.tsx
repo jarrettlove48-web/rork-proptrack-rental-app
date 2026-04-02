@@ -121,6 +121,7 @@ function RootLayoutNav() {
       <Stack.Screen name="contractors" options={{ title: "Contractors" }} />
       <Stack.Screen name="privacy-policy" options={{ title: "Privacy Policy" }} />
       <Stack.Screen name="contractor-portal" options={{ headerShown: false }} />
+      <Stack.Screen name="cancel-subscription" options={{ presentation: "modal", title: "Cancel Membership" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
